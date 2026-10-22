@@ -7,6 +7,7 @@ own connection; WAL mode lets the web server read while the indexer writes.
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -152,7 +153,7 @@ class Store:
         return [_row(r) for r in self.conn.execute(f"SELECT {cols} FROM documents ORDER BY title COLLATE NOCASE")]
 
     def sources_under(self, root: str) -> set[str]:
-        prefix = root.rstrip("/") + "/"
+        prefix = root.rstrip("/\\") + os.sep
         return {r[0] for r in self.conn.execute(
             "SELECT DISTINCT source FROM documents WHERE source = ? OR substr(source, 1, ?) = ?",
             (root, len(prefix), prefix))}

@@ -30,6 +30,7 @@ class Brain:
         self.last_report: IndexReport | None = None
         self.indexer = Indexer(self.store, self.embedder, self.settings, self._on_progress)
         self._job: threading.Thread | None = None
+        self.on_quit = None  # set by the desktop app
 
     def _on_progress(self, p: dict) -> None:
         self.progress = {**p, "at": time.time()}
@@ -102,4 +103,5 @@ class Brain:
             "busy": self.busy,
             "last_report": self.last_report.to_dict() if self.last_report else None,
             "home": str(self.settings.home),
+            "desktop": self.on_quit is not None,
         }

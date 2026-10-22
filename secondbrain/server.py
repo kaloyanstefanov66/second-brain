@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -142,6 +143,13 @@ def create_app(brain: Brain) -> FastAPI:
                 yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.post("/api/quit")
+    def quit_app():
+        if brain.on_quit is None:
+            raise HTTPException(404, "not running as the desktop app")
+        threading.Timer(0.3, brain.on_quit).start()  # let this response reach the page first
+        return {"ok": True}
 
     @app.get("/api/overview")
     def overview_():

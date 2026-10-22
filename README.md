@@ -13,7 +13,21 @@ sorted into topics it works out on its own.
 - **Private by design.** Local embeddings, a local LLM (optional), one SQLite file, and a server bound to `127.0.0.1`.
 - **Or bring your own API key.** Claude, OpenAI, Google Gemini or GitHub Models (Copilot) can write the answers instead, if you choose to.
 
-## Quick start
+## Download the app
+
+Get the latest release from the [Releases page](https://github.com/kaloyanstefanov66/second-brain/releases/latest):
+
+| | File | Install |
+|---|---|---|
+| macOS (Apple silicon) | `Second-Brain-macOS.dmg` | Open it, drag **Second Brain** to Applications. The app isn't notarized yet, so the first time right-click it → **Open** → **Open**. |
+| Windows 10/11 | `Second-Brain-Setup.exe` | Run it (no admin needed). If SmartScreen appears: **More info → Run anyway**. |
+| Linux | `Second-Brain-Linux.tar.gz` | Extract, run `./install.sh`, then open *Second Brain* from your app menu. Opens in your browser unless GTK or Qt Python bindings are installed. |
+
+Double-click it and a window opens. It finds your notes, and closing the window quits it. Your library lives in
+`~/.secondbrain` and is shared with the command-line version. The first launch downloads the local embedding
+model once (about 70 MB). Logs are in `~/.secondbrain/app.log`.
+
+## Quick start (from source)
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
@@ -180,6 +194,29 @@ The web UI is a thin client over a JSON API (interactive docs at `/api/docs`): `
 `POST /api/ask` (NDJSON stream of `sources`, `meta`, `delta`, `done` events), `GET /api/graph`, `GET /api/connections`,
 `GET /api/documents/{id}`, `POST /api/sources`, `POST /api/upload`, `POST /api/reindex`, `GET /api/status`,
 `GET/PUT /api/providers…` (keys are write-only).
+
+## Building the desktop app
+
+The app is the same Python code in a native window ([pywebview](https://pywebview.flowrl.com/): WebKit on macOS,
+Edge WebView2 on Windows), bundled with PyInstaller. Each OS builds its own app:
+
+```bash
+pip install -e ".[desktop,embeddings]" pyinstaller
+pyinstaller packaging/secondbrain.spec --noconfirm   # → dist/Second Brain.app or dist/SecondBrain/
+second-brain                                         # or run the windowed app straight from source
+```
+
+`.github/workflows/release.yml` builds all three on GitHub's macOS, Windows and Linux machines, packages them
+(`.dmg`, an Inno Setup installer, and a `.tar.gz` with `install.sh`), and publishes them as a GitHub Release
+when you push a version tag:
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+It can also be run by hand from the Actions tab to get the builds without a release. The icons come from
+`packaging/make_icons.py`. Builds are unsigned: removing the macOS and Windows warnings needs an Apple
+Developer ID (notarization) and a Windows code-signing certificate.
 
 ## Development
 

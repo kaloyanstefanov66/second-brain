@@ -1,0 +1,99 @@
+name: Desktop apps
+
+# Builds the desktop app on macOS, Windows and Linux.
+# Push a tag like v0.1.0 to publish a GitHub Release with the installers attached,
+# or run it manually from the Actions tab to just get the builds as artifacts.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest      # Apple silicon
+            artifact: Second-Brain-macOS.dmg
+          - os: windows-latest
+            artifact: Second-Brain-Setup.exe
+          - os: ubuntu-22.04      # older glibc, so the build runs on more distributions
+            artifact: Second-Brain-Linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          # Linux builds open in the browser unless the user has GTK/Qt; no web view bundled there.
+          if [ "$RUNNER_OS" = "Linux" ]; then extras="embeddings,dev"; else extras="desktop,embeddings,dev"; fi
+          pip install -e ".[$extras]" pyinstaller
+
+      - name: Test
+        run: pytest -q
+
+      - name: Build app
+        run: pyinstaller packaging/secondbrain.spec --noconfirm
+
+      - name: Package (macOS disk image)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir dmg
+          cp -R "dist/Second Brain.app" dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname "Second Brain" -srcfolder dmg -ov -format UDZO dist/Second-Brain-macOS.dmg
+
+      - name: Package (Windows installer)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path pyproject.toml -Pattern '^version = "(.+)"').Matches[0].Groups[1].Value
+          $inno = "C:\Program Files (x86)\Inno Setup 6"
+          if (-not (Test-Path "$inno\ISCC.exe")) { choco install innosetup -y --no-progress }
+          & "$inno\ISCC.exe" "/DAppVersion=$version" packaging\windows\installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Package (Linux archive)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p pkg/Second-Brain
+          cp -R dist/SecondBrain pkg/Second-Brain/
+          cp packaging/linux/install.sh packaging/icons/icon.png pkg/Second-Brain/
+          tar czf dist/Second-Brain-Linux.tar.gz -C pkg Second-Brain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+          body: |
+            ## Download
+            - **macOS** (Apple silicon): `Second-Brain-macOS.dmg`. Open it and drag Second Brain to Applications.
+              The app isn't notarized yet, so the first time: right-click it → **Open** → **Open**.
+            - **Windows**: `Second-Brain-Setup.exe`. If SmartScreen appears, click **More info → Run anyway**.
+            - **Linux**: `Second-Brain-Linux.tar.gz`. Extract it and run `./install.sh`.
+
+            On first launch Second Brain finds your notes and asks before indexing anything. Everything stays on your computer.

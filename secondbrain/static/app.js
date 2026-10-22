@@ -76,6 +76,10 @@
     store.set("theme", theme);
     applyTheme(theme);
   });
+  $("#quit-app").addEventListener("click", async () => {
+    try { await api("/api/quit", { method: "POST" }); } catch {}
+    document.body.innerHTML = '<div class="empty" style="padding-top:30vh"><h2>Second Brain has stopped</h2><p>You can close this tab.</p></div>';
+  });
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => state.graph && state.graph.readColors());
 
   // ================================================================ status
@@ -110,6 +114,7 @@
     $("#status-llm").textContent = s.llm ? `Answers: ${s.llm}${s.llm_cloud ? " · cloud" : ""}`
       : s.llm_choice !== "auto" && s.llm_choice !== "none" ? "Selected engine unavailable: quoting files" : "Quoted answers (no local LLM running)";
     $("#nav-docs").textContent = s.documents || "";
+    $("#quit-app").classList.toggle("hidden", !s.desktop);
     $("#nav-conn").textContent = s.discovered || "";
     $("#ask-hint").textContent = s.llm && s.llm_cloud
       ? `Answered by ${s.llm} in the cloud: your question and the matching excerpts are sent to the provider.`

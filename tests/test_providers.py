@@ -114,7 +114,8 @@ def test_key_saved_masked_private_and_used_for_answers(client):
     assert st["active"] == "openai", "adding the first key makes it the active engine"
 
     path = brain.settings.home / "providers.json"
-    assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
+    if os.name == "posix":
+        assert stat.S_IMODE(os.stat(path).st_mode) == 0o600
     for endpoint in ("/api/providers", "/api/status"):
         assert GOOD_KEY not in c.get(endpoint).text, "raw keys must never leave the server"
 

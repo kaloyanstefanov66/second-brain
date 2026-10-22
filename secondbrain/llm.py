@@ -84,7 +84,8 @@ class ProviderStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".providers-")
         try:
-            os.fchmod(fd, 0o600)  # keys are readable by you only
+            if hasattr(os, "fchmod"):  # POSIX: keys readable by you only (Windows: per-user profile ACLs apply)
+                os.fchmod(fd, 0o600)
             with os.fdopen(fd, "w") as f:
                 json.dump(data, f, indent=2)
             os.replace(tmp, self.path)
