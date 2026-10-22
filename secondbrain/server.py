@@ -44,7 +44,7 @@ class BulkBody(BaseModel):
 
 
 def create_app(brain: Brain) -> FastAPI:
-    app = FastAPI(title="Second Brain OS", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    app = FastAPI(title="Second Brain", docs_url="/api/docs", openapi_url="/api/openapi.json")
     allowed_hosts = {"localhost", "127.0.0.1", "[::1]", brain.settings.host}
 
     @app.middleware("http")

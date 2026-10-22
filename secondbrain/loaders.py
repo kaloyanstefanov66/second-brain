@@ -476,7 +476,7 @@ def fetch_page_text(url: str, timeout: float = 10.0, max_bytes: int = 2_000_000)
     """Download a bookmarked page and extract readable text. Only used when fetch_bookmarks is on."""
     import urllib.request
 
-    req = urllib.request.Request(url, headers={"User-Agent": "SecondBrainOS/0.1 (+local indexer)"})
+    req = urllib.request.Request(url, headers={"User-Agent": "SecondBrain/0.1 (+local indexer)"})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         if "html" not in resp.headers.get("Content-Type", "html"):
             return ""

@@ -1,4 +1,4 @@
-// Second Brain OS front-end. Plain JS, no build step, no network access beyond this local server.
+// Second Brain front-end. Plain JS, no build step, no network access beyond this local server.
 (function () {
   "use strict";
   const $ = (sel, el = document) => el.querySelector(sel);

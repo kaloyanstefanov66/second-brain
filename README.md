@@ -1,4 +1,4 @@
-# Second Brain OS
+# Second Brain
 
 **Search everything you know.** A local-first app that indexes your notes, PDFs, bookmarks and
 documents into a searchable knowledge graph. Nothing leaves your machine.

@@ -199,7 +199,7 @@ def cmd_serve(args):
         FolderWatcher(brain).start()
     host, port = args.host or brain.settings.host, args.port or brain.settings.port
     url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
-    print(f"Second Brain OS running at {url}  (embeddings: {brain.embedder.describe()})")
+    print(f"Second Brain running at {url}  (embeddings: {brain.embedder.describe()})")
     if not brain.store.roots():
         print("First run: the app will offer to find your notes automatically.")
     if args.open:
@@ -208,7 +208,7 @@ def cmd_serve(args):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="brain", description="Second Brain OS: search everything you know, locally.")
+    p = argparse.ArgumentParser(prog="brain", description="Second Brain: search everything you know, locally.")
     p.add_argument("--home", help="data directory (default ~/.secondbrain or $SECONDBRAIN_HOME)")
     p.add_argument("--embedder", choices=["auto", "fastembed", "ollama", "hashing"], help="embedding backend")
     sub = p.add_subparsers(dest="cmd")

@@ -134,7 +134,7 @@ def mask(key: str | None) -> str | None:
 
 def _request(url: str, *, body: dict | None = None, headers: dict | None = None, timeout: float = 30):
     data = json.dumps(body).encode() if body is not None else None
-    hdrs = {"Content-Type": "application/json", "User-Agent": "SecondBrainOS/0.1", **(headers or {})}
+    hdrs = {"Content-Type": "application/json", "User-Agent": "SecondBrain/0.1", **(headers or {})}
     req = urllib.request.Request(url, data, hdrs)
     try:
         return urllib.request.urlopen(req, timeout=timeout)
@@ -225,7 +225,7 @@ class AnthropicLLM(LLM):
     cloud = True
 
     def __init__(self, api_key: str, model: str):
-        import anthropic  # optional dependency: pip install "second-brain-os[cloud]"
+        import anthropic
 
         self.anthropic = anthropic
         self.client = anthropic.Anthropic(api_key=api_key, max_retries=2)
