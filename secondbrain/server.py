@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .brain import Brain
-from .qa import detect_llm
+from .llm import PROVIDERS, ProviderError, ProviderStore, detect_llm, list_models, pick_model, provider_status
 
 STATIC = Path(__file__).parent / "static"
 
@@ -26,6 +26,15 @@ class AskBody(BaseModel):
 
 class PathBody(BaseModel):
     path: str
+
+
+class ProviderBody(BaseModel):
+    api_key: str | None = None
+    model: str | None = None
+
+
+class ActiveBody(BaseModel):
+    provider: str
 
 
 def create_app(brain: Brain) -> FastAPI:
@@ -52,6 +61,65 @@ def create_app(brain: Brain) -> FastAPI:
     def refresh_llm():
         llm = detect_llm(brain.settings, refresh=True)
         return {"llm": llm.name if llm else None}
+
+    # ---- answer engines & API keys (keys go in, only masked keys come out) ----
+
+    def _spec(pid: str):
+        if pid not in PROVIDERS:
+            raise HTTPException(404, f"unknown provider {pid!r}")
+        return PROVIDERS[pid]
+
+    @app.get("/api/providers")
+    def providers():
+        return provider_status(brain.settings)
+
+    @app.get("/api/providers/{pid}/models")
+    def provider_models(pid: str):
+        _spec(pid)
+        try:
+            return {"models": list_models(pid, brain.settings, ProviderStore(brain.settings.home))}
+        except (ProviderError, ImportError) as e:
+            raise HTTPException(400, str(e))
+
+    @app.put("/api/providers/{pid}")
+    def save_provider(pid: str, body: ProviderBody):
+        spec = _spec(pid)
+        store = ProviderStore(brain.settings.home)
+        key = (body.api_key or "").strip() or None
+        if key and not spec.cloud:
+            raise HTTPException(400, f"{spec.name} runs locally and needs no key")
+        model = body.model
+        if key:  # validate before saving: listing models fails fast on a bad key
+            try:
+                available = list_models(pid, brain.settings, store, api_key=key)
+            except (ProviderError, ImportError) as e:
+                raise HTTPException(400, f"{spec.name}: {e}. The key was not saved.")
+            model = pick_model(spec, available, model or store.load()["providers"].get(pid, {}).get("model"))
+            store.update(pid, api_key=key, model=model)
+            if store.load()["active"] in (None, "auto", "none"):
+                store.set_active(pid)  # adding a key means you want to use it
+        elif model:
+            store.update(pid, model=model)
+        return provider_status(brain.settings)
+
+    @app.delete("/api/providers/{pid}/key")
+    def delete_key(pid: str):
+        _spec(pid)
+        store = ProviderStore(brain.settings.home)
+        store.update(pid, api_key=None)
+        if store.load()["active"] == pid and not store.key(pid)[0]:
+            store.set_active("auto")
+        return provider_status(brain.settings)
+
+    @app.post("/api/providers/active")
+    def set_active(body: ActiveBody):
+        if body.provider not in ("auto", "none"):
+            spec = _spec(body.provider)
+            if spec.cloud and not ProviderStore(brain.settings.home).key(spec.id)[0]:
+                raise HTTPException(400, f"add a {spec.name} API key first")
+        ProviderStore(brain.settings.home).set_active(body.provider)
+        llm = detect_llm(brain.settings, refresh=True)
+        return {**provider_status(brain.settings), "llm": llm.name if llm else None}
 
     @app.get("/api/search")
     def search(q: str, k: int = 20, kind: str | None = None):

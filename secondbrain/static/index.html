@@ -31,6 +31,9 @@
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H7a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19Z"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
 </svg>
 
@@ -43,6 +46,7 @@
       <button data-view="graph"><svg class="i"><use href="#i-graph"/></svg>Graph</button>
       <button data-view="connections"><svg class="i"><use href="#i-spark"/></svg>Connections<span class="count" id="nav-conn"></span></button>
       <button data-view="library"><svg class="i"><use href="#i-library"/></svg>Library<span class="count" id="nav-docs"></span></button>
+      <button data-view="settings"><svg class="i"><use href="#i-settings"/></svg>Settings</button>
     </nav>
     <div class="side-foot">
       <div class="status-line"><span class="dot" id="dot-index"></span><span id="status-index">Loading…</span></div>
@@ -155,6 +159,30 @@
         <table class="doc-table"><thead><tr><th>Title</th><th>Type</th><th>Tags</th><th class="num">Words</th></tr></thead><tbody id="doc-rows"></tbody></table>
       </div>
     </section>
+    <!-- SETTINGS -->
+    <section class="view" id="view-settings">
+      <div class="page">
+        <h1>Settings</h1>
+        <p class="lede">Choose what writes your answers, and see exactly what Second Brain reads.</p>
+
+        <div class="section-title"><svg class="i"><use href="#i-ask"/></svg>Answer engine</div>
+        <div class="chips" id="engine-choice"></div>
+        <div class="notice" id="engine-note"></div>
+        <div class="providers" id="providers"></div>
+
+        <div class="section-title"><svg class="i"><use href="#i-folder"/></svg>What gets indexed</div>
+        <div class="card explain md">
+          <p><strong>Only what you add.</strong> Second Brain never scans your whole disk. It reads the folders and files you add in the Library (or with <code>brain add</code>), plus files you drop into the upload box. Nothing else on your machine is opened.</p>
+          <ul>
+            <li><strong>Inside an added folder</strong> it reads, recursively, files with these extensions: <code>.md .markdown .txt .org .rst .pdf .docx .html .htm</code>, and bookmark exports (<code>bookmarks.html</code>, Chrome's <code>Bookmarks</code> JSON). Everything else is ignored: images, code, archives, apps.</li>
+            <li><strong>It skips</strong> hidden files and folders (anything starting with a dot), <code>.git</code>, <code>node_modules</code>, virtualenvs, <code>.obsidian</code>, <code>.trash</code>, build folders, and files larger than 50&nbsp;MB.</li>
+            <li><strong>Re-indexing</strong> only re-reads files whose size or modification time changed, and removes documents whose files were deleted. With <code>brain serve --watch</code>, changes in your added folders are picked up within a few seconds.</li>
+            <li><strong>Your files are never modified.</strong> Their text is copied into one database, <code id="home-path">~/.secondbrain/brain.db</code>. Removing a source deletes its entries from that database, not your files.</li>
+            <li><strong>Network use:</strong> none by default. The only outbound traffic is a one-time download of the local embedding model, fetching bookmarked pages if you turn on <code>fetch_bookmarks</code>, and the cloud answer engine if you select one above.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
   </main>
 
   <aside class="reader" id="reader">
@@ -174,6 +202,7 @@
     <button data-view="graph"><svg class="i"><use href="#i-graph"/></svg>Graph</button>
     <button data-view="connections"><svg class="i"><use href="#i-spark"/></svg>Links</button>
     <button data-view="library"><svg class="i"><use href="#i-library"/></svg>Library</button>
+    <button data-view="settings"><svg class="i"><use href="#i-settings"/></svg>Settings</button>
   </nav>
 </div>
 <div class="cite-pop card hidden" id="cite-pop"></div>

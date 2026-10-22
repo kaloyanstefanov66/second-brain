@@ -45,6 +45,7 @@
     if (view === "graph") loadGraph();
     if (view === "connections") loadConnections();
     if (view === "library") loadLibrary();
+    if (view === "settings") loadSettings();
     if (view === "search") setTimeout(() => $("#search-input").focus(), 0);
     if (view === "ask") setTimeout(() => $("#ask-input").focus(), 0);
   }
@@ -105,12 +106,14 @@
     $("#dot-embed").className = lexical ? "dot warn" : "dot ok";
     $("#status-embed").textContent = lexical ? "Lexical embeddings (add a model for semantic search)" : `Embeddings: ${s.embedder.description}`;
     $("#dot-llm").className = s.llm ? "dot ok" : "dot warn";
-    $("#status-llm").textContent = s.llm ? `Answers: ${s.llm}` : "Extractive answers (no local LLM running)";
+    $("#status-llm").textContent = s.llm ? `Answers: ${s.llm}${s.llm_cloud ? " · cloud" : ""}`
+      : s.llm_choice !== "auto" && s.llm_choice !== "none" ? "Selected engine unavailable: quoting files" : "Quoted answers (no local LLM running)";
     $("#nav-docs").textContent = s.documents || "";
     $("#nav-conn").textContent = s.discovered || "";
-    $("#ask-hint").textContent = s.llm
-      ? `Answered locally by ${s.llm} · Enter to ask · Shift+Enter for a new line`
-      : "No local LLM found: answers are quoted from your files. Start Ollama for written answers.";
+    $("#ask-hint").textContent = s.llm && s.llm_cloud
+      ? `Answered by ${s.llm} in the cloud: your question and the matching excerpts are sent to the provider.`
+      : s.llm ? `Answered locally by ${s.llm} · Enter to ask · Shift+Enter for a new line`
+      : "No answer engine: answers are quoted from your files. Start Ollama or add an API key in Settings.";
     if (state.view === "library") renderProgress(s);
     if (!state.kindsRendered && s.by_kind) renderKindChips(s.by_kind);
   }
@@ -205,7 +208,8 @@
             meta.innerHTML = `<span class="spinner"></span><span>Reading ${sources.length} passages…</span>`;
           } else if (ev.type === "meta") {
             mode = ev.mode;
-            meta.innerHTML = mode === "llm" ? `<span class="spinner"></span><span class="badge">${esc(ev.model)}</span><span>writing…</span>`
+            state.answerCloud = !!ev.cloud;
+            meta.innerHTML = mode === "llm" ? `<span class="spinner"></span><span class="badge${ev.cloud ? " cloud" : ""}">${esc(ev.model)}</span><span>writing…</span>`
               : mode === "extractive" ? `<span class="badge">Quoted from your files</span><span>No local LLM running: showing the most relevant sentences.</span>` : "";
           } else if (ev.type === "delta") {
             text += ev.text;
@@ -216,7 +220,7 @@
         }
       }
       paint();
-      if (mode === "llm") meta.innerHTML = `<span class="badge">${esc(meta.querySelector(".badge")?.textContent || "local model")}</span><span>answered on this machine</span>`;
+      if (mode === "llm") meta.innerHTML = `<span class="badge${state.answerCloud ? " cloud" : ""}">${esc(meta.querySelector(".badge")?.textContent || "model")}</span><span>${state.answerCloud ? "answered in the cloud from the excerpts below" : "answered on this machine"}</span>`;
       const cited = new Set([...text.matchAll(/\[(\d+)\]/g)].map((m) => +m[1]));
       $$(".source", srcBox).forEach((el) => el.classList.toggle("dim", cited.size > 0 && !cited.has(+el.dataset.n)));
       state.history.push({ role: "user", content: question }, { role: "assistant", content: text });
@@ -548,6 +552,102 @@
     const fd = new FormData();
     for (const f of files) fd.append("files", f);
     startJob(api("/api/upload", { method: "POST", body: fd }), `Uploading ${files.length} file(s) to your local inbox…`);
+  }
+
+  // ================================================================ settings
+
+  async function loadSettings() {
+    try { renderProviders(await api("/api/providers")); } catch (e) { $("#providers").innerHTML = `<div class="notice error">${esc(e.message)}</div>`; }
+    if (state.status) $("#home-path").textContent = `${state.status.home}/brain.db`;
+  }
+
+  function renderProviders(st) {
+    state.providers = st;
+    const ready = (p) => !p.cloud || p.configured;
+    const nameOf = (id) => ({ auto: "Auto (local only)", none: "Quotes only" })[id] || st.providers.find((p) => p.id === id)?.name || id;
+    $("#engine-choice").innerHTML = [
+      `<button class="chip ${st.active === "auto" ? "active" : ""}" data-use="auto">${icon("i-lock")}Auto · local only</button>`,
+      `<button class="chip ${st.active === "none" ? "active" : ""}" data-use="none">Quotes only</button>`,
+      ...st.providers.map((p) => `<button class="chip ${st.active === p.id ? "active" : ""}" data-use="${p.id}" ${ready(p) ? "" : 'disabled title="Add a key first"'}>${icon(p.cloud ? "i-cloud" : "i-lock")}${esc(p.name)}</button>`),
+    ].join("");
+    const active = st.providers.find((p) => p.id === st.active);
+    $("#engine-note").innerHTML = active && active.cloud
+      ? `${icon("i-cloud", "width:14px;height:14px;vertical-align:-2px")} <strong>${esc(active.name)}</strong> answers your questions. Each question, the ~8 passages retrieved from your files and the last few chat turns are sent to ${esc(active.name)}. Your library, index and embeddings stay on this machine.`
+      : st.active === "none" ? "Answers are quoted sentences from your files, with citations. Nothing is generated."
+      : st.active === "auto" ? "Uses Ollama or a local server if one is running, otherwise quotes your files. Nothing leaves this machine."
+      : `${esc(nameOf(st.active))} runs on this machine. Nothing leaves it.`;
+
+    $("#providers").innerHTML = st.providers.map((p) => `
+      <div class="provider card ${st.active === p.id ? "active" : ""}" data-p="${p.id}">
+        <div class="p-head"><span class="p-name">${esc(p.name)}</span>
+          <span class="pill ${p.cloud ? "cloud" : "local"}">${icon(p.cloud ? "i-cloud" : "i-lock")}${p.cloud ? "Cloud" : "Local"}</span>
+          <span class="p-status">${st.active === p.id ? "Active" : p.cloud ? (p.configured ? "Key added" : "No key") : ""}</span></div>
+        ${p.notes ? `<div class="p-notes">${esc(p.notes)}</div>` : ""}
+        ${p.cloud ? `
+          ${p.configured ? `<div class="p-keyline">${icon("i-key", "width:13px;height:13px")}<code>${esc(p.masked_key)}</code>
+              ${p.key_source === "saved" ? `saved · <button class="linkish" data-remove>remove</button>` : `from <code>$${esc(p.key_source.slice(4))}</code>`}</div>` : ""}
+          <form class="p-key" autocomplete="off">
+            <input class="input" type="password" name="key" placeholder="${p.configured ? "Replace key" : "Paste API key"} (${esc(p.key_hint)})" autocomplete="new-password" spellcheck="false">
+            <button class="btn small primary" type="submit">Save</button>
+          </form>
+          <div class="p-keyline"><a href="${esc(p.key_url)}" target="_blank" rel="noopener noreferrer">Get a key ↗</a> <span>or set ${p.env.map((e) => `<code>$${esc(e)}</code>`).join(" / ")}</span></div>` : ""}
+        <div class="p-model ${p.cloud && !p.configured ? "hidden" : ""}">Model <select data-model><option>${esc(p.model)}</option></select></div>
+        <div class="p-error"></div>
+      </div>`).join("");
+
+    $$("#engine-choice [data-use]").forEach((b) => b.addEventListener("click", () => useProvider(b.dataset.use)));
+    $$("#providers .provider").forEach((card) => {
+      const p = st.providers.find((x) => x.id === card.dataset.p);
+      const err = $(".p-error", card);
+      $(".p-key", card)?.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        const input = ev.target.key, key = input.value.trim();
+        if (!key) return;
+        const btn = $("button", ev.target);
+        btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>'; err.textContent = "";
+        try {
+          const next = await api(`/api/providers/${p.id}`, { method: "PUT", body: JSON.stringify({ api_key: key }) });
+          input.value = "";
+          toast(`${p.name} key verified and saved`);
+          renderProviders(next); pollStatusSoon();
+        } catch (e) { err.textContent = e.message; btn.disabled = false; btn.textContent = "Save"; }
+      });
+      $("[data-remove]", card)?.addEventListener("click", async () => {
+        if (!confirm(`Remove the saved ${p.name} key?`)) return;
+        renderProviders(await api(`/api/providers/${p.id}/key`, { method: "DELETE" })); pollStatusSoon();
+      });
+      const sel = $("[data-model]", card);
+      if (!p.cloud || p.configured) loadModels(p, sel, err);
+      sel.addEventListener("change", async () => {
+        try { await api(`/api/providers/${p.id}`, { method: "PUT", body: JSON.stringify({ model: sel.value }) }); toast(`${p.name} will use ${sel.value}`); pollStatusSoon(); }
+        catch (e) { err.textContent = e.message; }
+      });
+    });
+  }
+
+  async function loadModels(p, sel, err) {
+    try {
+      const { models } = await api(`/api/providers/${p.id}/models`);
+      if (!models.length) { err.textContent = p.cloud ? "" : "Running, but no models installed."; return; }
+      const current = models.includes(p.model) ? p.model : models[0];
+      sel.innerHTML = models.map((m) => `<option ${m === current ? "selected" : ""}>${esc(m)}</option>`).join("");
+    } catch (e) {
+      if (!p.cloud) { sel.closest(".p-model").classList.add("hidden"); $(".p-status", sel.closest(".provider")).textContent = "Not running"; }
+      else err.textContent = e.message;
+    }
+  }
+
+  async function useProvider(id) {
+    try {
+      const next = await api("/api/providers/active", { method: "POST", body: JSON.stringify({ provider: id }) });
+      renderProviders(next);
+      toast(next.llm ? `Answers now come from ${next.llm}` : id === "none" ? "Answers will quote your files" : "No engine available right now: answers will quote your files");
+      pollStatusSoon();
+    } catch (e) { toast(e.message, 5000); }
+  }
+
+  async function pollStatusSoon() {
+    try { const s = await api("/api/status"); state.status = s; renderStatus(s); } catch {}
   }
 
   // ================================================================ reader

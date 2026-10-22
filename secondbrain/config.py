@@ -22,11 +22,13 @@ class Settings:
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_embed_model: str = "nomic-embed-text"
 
-    # Question answering: "auto" tries Ollama, then an OpenAI-compatible local server
-    # (LM Studio, llama.cpp, vLLM...), then falls back to extractive answers.
+    # Question answering. "auto" uses local engines only: Ollama, then an OpenAI-compatible
+    # local server (LM Studio, llama.cpp, vLLM), else extractive answers. Cloud providers
+    # (anthropic, openai, gemini, github) are used only when selected; the choice made in the
+    # web UI or with `brain keys use` (stored in providers.json) overrides this.
     llm: str = "auto"
     llm_model: str = "llama3.2"
-    openai_url: str = "http://127.0.0.1:1234/v1"
+    local_url: str = "http://127.0.0.1:1234/v1"
 
     # Indexing
     chunk_chars: int = 1000

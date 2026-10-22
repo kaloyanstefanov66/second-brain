@@ -7,6 +7,7 @@ documents into a searchable knowledge graph. Nothing leaves your machine.
 - **Discover connections automatically.** It finds pairs of notes that talk about the same thing but that you never linked, and explains each pair with the bridging terms and the two passages that match best.
 - **See how your ideas connect.** An interactive graph of your explicit links and semantic similarity, clustered and labelled by topic.
 - **Private by design.** Local embeddings, a local LLM (optional), one SQLite file, and a server bound to `127.0.0.1`.
+- **Or bring your own API key.** Claude, OpenAI, Google Gemini or GitHub Models (Copilot) can write the answers instead, if you choose to.
 
 ## Quick start
 
@@ -20,9 +21,53 @@ brain serve --watch --open          # http://localhost:7777
 
 To try it on the bundled demo vault: `brain add sample_vault && brain serve --open`.
 
-For generated answers (instead of quoted sentences), install [Ollama](https://ollama.com) and run
-`ollama pull llama3.2`. Second Brain detects it automatically. Any OpenAI-compatible local server
-(LM Studio, llama.cpp, vLLM) on `localhost:1234` also works.
+For generated answers (instead of quoted sentences), either run a local model: install [Ollama](https://ollama.com)
+and `ollama pull llama3.2`, or any OpenAI-compatible server (LM Studio, llama.cpp, vLLM) on `localhost:1234`,
+both detected automatically. Or add a cloud API key (see below).
+
+## What does it read? (No, it doesn't crawl your disk)
+
+Second Brain only reads what you explicitly give it:
+
+1. **Folders or files you add** with `brain add PATH` or the Library page. They are remembered as *sources*.
+2. **Files you upload** in the web UI. They are copied to `~/.secondbrain/inbox/`.
+
+Inside a source folder it walks subfolders, but only opens files with supported extensions
+(`.md .markdown .txt .org .rst .pdf .docx .html .htm`, plus bookmark exports). It skips hidden files and
+folders, `.git`, `node_modules`, virtualenvs, `.obsidian`, `.trash`, build output, and anything over 50 MB.
+Re-indexing re-reads only files whose size or modification time changed. `--watch` watches only your
+source folders. Your files are never modified; their text is copied into `~/.secondbrain/brain.db`, and
+`brain remove PATH` deletes those copies, not the files.
+
+## Answer engines and API keys
+
+| Engine | Where it runs | Key |
+|---|---|---|
+| Auto (default) | Ollama or a local server if running, otherwise quoted sentences | none |
+| Ollama / Local server | your machine | none |
+| Claude | Anthropic API, via the official `anthropic` SDK (default model `claude-opus-5-5`) | `ANTHROPIC_API_KEY` |
+| OpenAI | OpenAI API (default `gpt-5-mini`) | `OPENAI_API_KEY` |
+| Google Gemini | Gemini API (default `gemini-2.5-flash`) | `GEMINI_API_KEY` / `GOOGLE_API_KEY` |
+| GitHub Models (Copilot) | GitHub's model catalog (default `openai/gpt-4.1-mini`) | `GITHUB_TOKEN`, a token with the *Models* permission |
+
+Add a key in **Settings** in the web app, or from the terminal:
+
+```bash
+brain keys set anthropic        # prompts for the key (hidden input), verifies it, saves it
+brain keys use anthropic        # answer with Claude (or: auto, none, ollama, local, openai, gemini, github)
+brain keys list                 # shows masked keys and the active engine
+brain keys remove anthropic
+```
+
+- Keys are verified (by listing the provider's models) before they are saved, and stored in
+  `~/.secondbrain/providers.json` with file mode `0600`. Keys already in your environment variables are picked up automatically.
+  The API and UI only ever show masked keys.
+- **Auto never uses the cloud.** A cloud provider answers only after you select it.
+- **What a cloud provider sees:** your question, the ~8 passages retrieved for it, and the last few chat turns.
+  Not your library, your index or your embeddings, which always stay local.
+- GitHub Copilot has no general-purpose API for third-party apps. The supported route is **GitHub Models**, which serves
+  the Copilot model catalog with a GitHub token and bills against your GitHub Models / Copilot allowance.
+- For Claude Opus 5.5 / Sonnet 5.5 requests, Anthropic's server-side refusal fallback (`fallbacks: "default"`) is enabled.
 
 ## What it indexes
 
@@ -70,6 +115,7 @@ brain search "query"       hybrid search
 brain ask "question"       cited answer (--no-llm for extractive)
 brain connections          list discovered connections
 brain stats                what's indexed, which models are in use
+brain keys list|set|remove|use [PROVIDER]   manage API keys and the answer engine
 brain serve [--watch] [--open] [--port 7777]
 ```
 
@@ -84,9 +130,9 @@ embedder = "auto"                    # auto | fastembed | ollama | hashing
 fastembed_model = "BAAI/bge-small-en-v1.5"
 ollama_url = "http://127.0.0.1:11434"
 ollama_embed_model = "nomic-embed-text"
-llm = "auto"                         # auto | ollama | openai | none
-llm_model = "llama3.2"
-openai_url = "http://127.0.0.1:1234/v1"
+llm = "auto"                         # auto | none | ollama | local | anthropic | openai | gemini | github
+llm_model = "llama3.2"               # default local model
+local_url = "http://127.0.0.1:1234/v1"  # OpenAI-compatible local server
 chunk_chars = 1000
 neighbors_per_doc = 6
 min_similarity = 0.0                 # 0 = calibrated per embedder
@@ -98,14 +144,15 @@ fetch_bookmarks = false
 - All data lives in `~/.secondbrain/brain.db`. Files you upload through the web UI are copied to `~/.secondbrain/inbox/`.
 - The server listens on `127.0.0.1` only. It rejects requests whose `Host` header isn't local (to block DNS-rebinding attacks)
   and cross-site `Origin`s, so web pages you visit can't read or change your index.
-- Embedding and LLM calls go only to the local endpoints you configure.
+- Embeddings are always computed locally. Answer generation is local unless you select a cloud provider.
 - Note content is rendered with an escaping Markdown renderer; the UI loads no third-party scripts, fonts or CDNs.
 
 ## API
 
 The web UI is a thin client over a JSON API (interactive docs at `/api/docs`): `GET /api/search`,
 `POST /api/ask` (NDJSON stream of `sources`, `meta`, `delta`, `done` events), `GET /api/graph`, `GET /api/connections`,
-`GET /api/documents/{id}`, `POST /api/sources`, `POST /api/upload`, `POST /api/reindex`, `GET /api/status`.
+`GET /api/documents/{id}`, `POST /api/sources`, `POST /api/upload`, `POST /api/reindex`, `GET /api/status`,
+`GET/PUT /api/providers…` (keys are write-only).
 
 ## Development
 
@@ -115,7 +162,9 @@ pytest
 ```
 
 The tests cover loaders, chunking, incremental indexing, graph and discovery rules, embedder switching,
-extractive answers, LLM streaming against a fake local Ollama, and the HTTP API with its local-only guard.
+extractive answers, LLM streaming against a fake local Ollama, the HTTP API with its local-only guard,
+and the cloud providers against fake servers (key validation, masking, file permissions, "auto never uses the cloud",
+streaming through the Anthropic SDK and the OpenAI-compatible APIs).
 
 ## Limits and next steps
 

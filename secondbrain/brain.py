@@ -11,7 +11,8 @@ from .config import Settings
 from .embeddings import get_embedder
 from .graph import discovered_connections, graph_payload
 from .indexer import Indexer, IndexReport
-from .qa import answer, answer_text, detect_llm
+from .llm import active_provider, ProviderStore, detect_llm
+from .qa import answer, answer_text
 from .search import Searcher
 from .store import Store
 
@@ -95,6 +96,8 @@ class Brain:
             **self.store.stats(),
             "embedder": {"id": self.embedder.id, "description": self.embedder.describe()},
             "llm": llm.name if llm else None,
+            "llm_cloud": bool(llm and llm.cloud),
+            "llm_choice": active_provider(self.settings, ProviderStore(self.settings.home)),
             "progress": self.progress,
             "busy": self.busy,
             "last_report": self.last_report.to_dict() if self.last_report else None,

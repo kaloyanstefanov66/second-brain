@@ -246,6 +246,34 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--text-3); border: 1
 .notice { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; color: var(--text-2); margin-top: 10px; }
 .notice.error { color: var(--danger); }
 
+/* ---------- settings ---------- */
+#engine-choice { margin-bottom: 10px; }
+#engine-choice .chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; font-size: 13px; }
+#engine-choice .chip:disabled { opacity: .45; cursor: not-allowed; }
+#engine-choice .chip svg { width: 13px; height: 13px; }
+.providers { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 10px; margin-top: 14px; }
+.provider { padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.provider.active { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.p-head { display: flex; align-items: center; gap: 8px; }
+.p-name { font-weight: 620; font-size: 14.5px; }
+.pill { font-size: 10.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; border-radius: 4px; padding: 1px 6px; display: inline-flex; align-items: center; gap: 3px; }
+.pill svg { width: 11px; height: 11px; }
+.pill.local { background: var(--surface-2); color: var(--text-2); }
+.pill.cloud { background: var(--discover-soft); color: var(--text); }
+.p-status { margin-left: auto; font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+.p-notes { font-size: 12.5px; color: var(--text-2); }
+.p-key { display: flex; gap: 6px; }
+.p-key .input, .p-model select { padding: 6px 10px; font-size: 13px; }
+.p-keyline { font-size: 12px; color: var(--text-3); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.p-keyline code { font-family: var(--mono); color: var(--text-2); }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent-text); cursor: pointer; font-size: inherit; text-decoration: underline; }
+.p-model { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--text-3); }
+.p-model select { flex: 1; min-width: 0; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; }
+.p-error { font-size: 12px; color: var(--danger); }
+.explain { padding: 16px 20px; font-size: 13.5px; }
+.explain ul { margin-bottom: 0; }
+.answer-meta .badge.cloud { border-color: var(--discover); }
+
 /* ---------- reader ---------- */
 .reader { width: 0; overflow: hidden; background: var(--surface); border-left: 1px solid var(--border); transition: width .2s ease; display: flex; flex-direction: column; }
 .reader.open { width: min(560px, 46vw); }

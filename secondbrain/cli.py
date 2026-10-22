@@ -104,8 +104,62 @@ def cmd_stats(args):
     print(f"Chunks:      {s['chunks']}   Words: {s['words']:,}")
     print(f"Graph:       {s['links']} links, {s['semantic']} semantic edges, {s['discovered']} discovered")
     print(f"Embeddings:  {s['embedder']['description']}")
-    print(f"Answers:     {s['llm'] or 'extractive (no local LLM found: install Ollama for generated answers)'}")
+    answers = s["llm"] or "extractive (no engine: install Ollama, or add a key with `brain keys set`)"
+    print(f"Answers:     {answers}" + ("  [cloud]" if s["llm_cloud"] else ""))
     print("Sources:     " + ("\n             ".join(s["roots"]) or "none (run `brain add <folder>`)"))
+
+
+def cmd_keys(args):
+    import getpass
+
+    from .llm import PROVIDERS, ProviderError, ProviderStore, detect_llm, list_models, pick_model, provider_status
+
+    settings = Settings.load(args.home)
+    store = ProviderStore(settings.home)
+    if args.action == "list":
+        st = provider_status(settings)
+        print(f"Answering with: {st['active']}" + ("  (local engines only)" if st["active"] == "auto" else ""))
+        for p in st["providers"]:
+            if p["cloud"]:
+                key = f"{p['masked_key']} ({p['key_source']})" if p["configured"] else "no key"
+                print(f"  {p['id']:<10} {p['name']:<24} {key:<28} model: {p['model']}")
+            else:
+                print(f"  {p['id']:<10} {p['name']:<24} {'local, no key needed':<28}")
+        return
+    pid = args.provider
+    if pid not in PROVIDERS and not (args.action == "use" and pid in ("auto", "none")):
+        sys.exit(f"unknown provider {pid!r}; choose from {', '.join(PROVIDERS)}")
+    spec = PROVIDERS.get(pid)
+    if args.action == "set":
+        if not spec.cloud:
+            sys.exit(f"{spec.name} runs locally and needs no key")
+        print(f"Get a key at {spec.key_url}")
+        key = getpass.getpass(f"{spec.name} API key (input hidden): ").strip()
+        if not key:
+            sys.exit("no key entered")
+        try:
+            available = list_models(pid, settings, store, api_key=key)
+        except (ProviderError, ImportError) as e:
+            sys.exit(f"{spec.name}: {e}. Key not saved.")
+        model = pick_model(spec, available, args.model or store.load()["providers"].get(pid, {}).get("model"))
+        store.update(pid, api_key=key, model=model)
+        print(f"Saved (stored in {store.path}, readable by you only). Model: {model}")
+        print(f"Run `brain keys use {pid}` to answer with it.")
+    elif args.action == "remove":
+        store.update(pid, api_key=None)
+        if store.load()["active"] == pid:
+            store.set_active("auto")
+        print(f"Removed the saved {spec.name} key.")
+    elif args.action == "use":
+        if spec and spec.cloud and not store.key(pid)[0]:
+            sys.exit(f"add a key first: brain keys set {pid}")
+        if args.model and spec:
+            store.update(pid, model=args.model)
+        store.set_active(pid)
+        llm = detect_llm(settings, refresh=True)
+        print(f"Answers now come from: {llm.name if llm else 'quotes from your files (no engine available)'}")
+        if llm and llm.cloud:
+            print("Note: each question and the retrieved excerpts are sent to this provider.")
 
 
 def cmd_serve(args):
@@ -160,6 +214,12 @@ def main(argv=None):
     s = sub.add_parser("stats", help="show what's indexed and which models are in use")
     s.set_defaults(fn=cmd_stats)
 
+    s = sub.add_parser("keys", help="manage API keys and choose the answer engine")
+    s.add_argument("action", choices=["list", "set", "remove", "use"])
+    s.add_argument("provider", nargs="?", help="ollama, local, anthropic, openai, gemini, github (or auto/none with `use`)")
+    s.add_argument("--model", help="model to use with this provider")
+    s.set_defaults(fn=cmd_keys)
+
     s = sub.add_parser("serve", help="start the local web app")
     s.add_argument("--host")
     s.add_argument("--port", type=int)
@@ -168,6 +228,8 @@ def main(argv=None):
     s.set_defaults(fn=cmd_serve)
 
     args = p.parse_args(argv)
+    if args.cmd == "keys" and args.action != "list" and not args.provider:
+        p.error(f"keys {args.action} needs a provider")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     args.fn(args)
 

@@ -13,7 +13,7 @@ from secondbrain.chunking import chunk_sections
 from secondbrain.config import Settings
 from secondbrain.embeddings import HashingEmbedder
 from secondbrain.loaders import Section, load_file
-from secondbrain import qa
+from secondbrain import llm, qa
 
 SAMPLE = Path(__file__).resolve().parent.parent / "sample_vault"
 
@@ -27,7 +27,7 @@ def vault(tmp_path):
 
 @pytest.fixture()
 def brain(tmp_path, vault, monkeypatch):
-    monkeypatch.setattr(qa, "_detect_cache", None)
+    llm.clear_cache()
     s = Settings.load(tmp_path / "home", embedder="hashing", llm="none")
     b = Brain(s)
     b.add([vault])
@@ -194,9 +194,9 @@ def test_llm_answer_streams_from_local_ollama(brain, monkeypatch):
     try:
         brain.settings.llm = "ollama"
         brain.settings.ollama_url = f"http://127.0.0.1:{server.server_port}"
-        monkeypatch.setattr(qa, "_detect_cache", None)
+        llm.clear_cache()
         text, sources, meta = brain.ask("How do bees pick a home?")
-        assert meta == {"type": "meta", "mode": "llm", "model": "llama3.2:latest (Ollama)"}
+        assert meta == {"type": "meta", "mode": "llm", "model": "llama3.2:latest (Ollama)", "cloud": False}
         assert text == "Scouts dance and the swarm uses a quorum [1]."
     finally:
         server.shutdown()
