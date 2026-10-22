@@ -211,7 +211,7 @@ second-brain                                         # or run the windowed app s
 when you push a version tag:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
+git tag v0.1.0 && git push origin v0.1.0     # or: git push origin main:release (creates the tag from pyproject's version)
 ```
 
 It can also be run by hand from the Actions tab to get the builds without a release. The icons come from
