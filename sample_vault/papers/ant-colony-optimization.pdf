@@ -1,0 +1,74 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+2 0 obj
+<< /Length 668 >>
+stream
+BT /F1 11 Tf 60 760 Td 15 TL
+(Ant Colony Optimization: A Short Survey) '
+() '
+(Ants find short paths between nest and food without any central control. Each ant) '
+(deposits pheromone as it walks. Shorter paths are completed faster, so they accumulate) '
+(pheromone more quickly, which attracts more ants: a positive feedback loop. This) '
+(indirect coordination through the environment is called stigmergy.) '
+() '
+(Pheromone evaporation is essential. Without it, the colony would lock in on the first) '
+(path found, even a poor one. Evaporation acts as forgetting: trails that are not) '
+(reinforced fade, letting the colony adapt when conditions change.) '
+() '
+ET
+endstream
+endobj
+3 0 obj
+<< /Type /Page /Parent 6 0 R /MediaBox [0 0 612 792] /Contents 2 0 R /Resources << /Font << /F1 1 0 R >> >> >>
+endobj
+4 0 obj
+<< /Length 758 >>
+stream
+BT /F1 11 Tf 60 760 Td 15 TL
+(Applications) '
+() '
+(Dorigo's Ant System applied these ideas to the travelling salesman problem. Artificial) '
+(ants build tours probabilistically, biased by pheromone and distance; good tours deposit) '
+(more pheromone. Variants are used for vehicle routing, network packet routing and job-) '
+(shop scheduling.) '
+() '
+(Comparison with other collective decision systems) '
+() '
+(Like honeybee nest-site selection, ant foraging is decentralized: no individual has) '
+(global knowledge, yet the group converges on good solutions through local signals,) '
+(recruitment and thresholds. The balance between exploitation \(follow strong trails\) and) '
+(exploration \(random wandering\) mirrors many learning algorithms.) '
+() '
+ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 6 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 1 0 R >> >> >>
+endobj
+6 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+7 0 obj
+<< /Title (Ant Colony Optimization: A Short Survey) >>
+endobj
+8 0 obj
+<< /Type /Catalog /Pages 6 0 R >>
+endobj
+xref
+0 9
+0000000000 65535 f 
+0000000009 00000 n 
+0000000079 00000 n 
+0000000798 00000 n 
+0000000924 00000 n 
+0000001733 00000 n 
+0000001859 00000 n 
+0000001922 00000 n 
+0000001992 00000 n 
+trailer
+<< /Size 9 /Root 8 0 R /Info 7 0 R >>
+startxref
+2041
+%%EOF
