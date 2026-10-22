@@ -120,6 +120,22 @@ keeps working with what's indexed so far. When the app starts, it finishes an in
 changes made while it was closed.
 The server re-indexes changed files a couple of seconds after they change (`--no-watch` turns this off).
 
+## Updates never re-index
+
+Your library (`~/.secondbrain`) lives outside the app, so installing a new version keeps it, and the new version
+picks up exactly where the old one left off:
+
+- **Unchanged files are never re-read.** On launch the app only checks file sizes and modification times.
+- **Your library keeps its model.** It's always reopened with the exact embedding model it was built with, even if a
+  newer release ships a different default. Only a switch you make yourself (`--embedder`, or a model set in
+  `config.toml`) re-embeds.
+- **If that model can't load** (offline with a missing model cache, a packaging problem...), nothing is re-embedded.
+  Search falls back to keywords and the app tells you. New notes are stored without vectors, and when the model is
+  back only those are embedded.
+- **Database changes are migrations.** The library has a schema version, and each release upgrades it in place.
+  A library from a newer version is refused with a message rather than damaged.
+- The built-in embedder's output is pinned by a test, so it can't change by accident.
+
 ## Home: everything, organised
 
 Home lists every document exactly once: grouped into **topics**, which are clusters of notes that link to or resemble

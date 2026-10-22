@@ -60,6 +60,9 @@ class Indexer:
         self.on_progress = on_progress or (lambda p: None)
         self.lock = threading.RLock()
         self._last_progress: dict = {}
+        # False while the library's own embedding model can't be loaded: new passages are stored
+        # without vectors (keyword search still finds them) and get embedded once it is back.
+        self.vectors_enabled = True
         self._resume = threading.Event()
         if not store.get_meta("index_paused", False):  # a pause survives restarts
             self._resume.set()
@@ -94,30 +97,47 @@ class Indexer:
     # ------------------------------------------------------------ public API
 
     def ensure_embedder(self) -> bool:
-        """Re-embed everything if the index was built with a different embedder. Returns True if it did."""
+        """Make the stored vectors match the embedder. Returns True if any embedding work was done.
+
+        Same model as the library (the normal case, including after an app update): only passages
+        that were stored without vectors get embedded. A different model happens only when you
+        switch models on purpose, and then everything is re-embedded.
+        """
+        if not self.vectors_enabled:
+            return False  # library model unavailable: leave its vectors alone
         stored = self.store.get_meta("embedder")
-        if stored and stored.get("id") == self.embedder.id:
-            return False
         has_chunks = self.store.conn.execute("SELECT 1 FROM chunks LIMIT 1").fetchone()
-        if has_chunks:
-            self.reembed_all()
-        else:
-            self._save_embedder()
-        return bool(has_chunks)
+        if stored and stored.get("id") == self.embedder.id or not has_chunks:
+            if not stored:
+                self._save_embedder()
+            return self.backfill_embeddings() > 0
+        self.reembed_all()
+        return True
+
+    def _embed_rows(self, rows, stage: str) -> None:
+        for i in range(0, len(rows), 256):
+            self.checkpoint()
+            batch = rows[i:i + 256]
+            self._progress({"stage": stage, "current": i, "total": len(rows)})
+            texts = [f"{' — '.join(p for p in (r['title'], r['heading']) if p)}\n{r['text']}" for r in batch]
+            vecs = self.embedder.embed(texts)
+            with self.store.tx() as c:
+                self.store.set_embeddings(c, zip((r["id"] for r in batch), vecs))
 
     def reembed_all(self) -> None:
         with self.lock:
-            rows = list(self.store.iter_chunk_texts())
-            for i in range(0, len(rows), 256):
-                self.checkpoint()
-                batch = rows[i:i + 256]
-                self._progress({"stage": "re-embedding", "current": i, "total": len(rows)})
-                texts = [f"{' — '.join(p for p in (r['title'], r['heading']) if p)}\n{r['text']}" for r in batch]
-                vecs = self.embedder.embed(texts)
-                with self.store.tx() as c:
-                    self.store.set_embeddings(c, zip((r["id"] for r in batch), vecs))
+            self._embed_rows(list(self.store.iter_chunk_texts()), "re-embedding")
             self._save_embedder()
             self.finalize(IndexReport())
+
+    def backfill_embeddings(self) -> int:
+        """Embed only passages stored without vectors (indexed while the model was unavailable)."""
+        with self.lock:
+            rows = list(self.store.iter_chunk_texts(missing_only=True))
+            if rows:
+                self._embed_rows(rows, "embedding new passages")
+                self.finalize(IndexReport())
+            return len(rows)
 
     def index_paths(self, paths: list[str | Path], remember: bool = True) -> IndexReport:
         with self.lock:
@@ -224,11 +244,14 @@ class Indexer:
                 chunks = [Chunk(doc.title)]
             plans.append((doc, h, existed, chunks, len(texts)))
             texts += [embed_text(doc, ch) for ch in chunks]
-        batches = []
-        for i in range(0, len(texts), EMBED_BATCH):  # small batches so a pause takes effect quickly
-            self.checkpoint()
-            batches.append(self.embedder.embed(texts[i:i + EMBED_BATCH]))
-        vecs = np.concatenate(batches)
+        if self.vectors_enabled:
+            batches = []
+            for i in range(0, len(texts), EMBED_BATCH):  # small batches so a pause takes effect quickly
+                self.checkpoint()
+                batches.append(self.embedder.embed(texts[i:i + EMBED_BATCH]))
+            vecs = np.concatenate(batches)
+        else:
+            vecs = [None] * len(texts)
         with self.store.tx() as c:
             for doc, h, existed, chunks, offset in plans:
                 self.store.upsert_document(c, doc, chunks, vecs[offset:offset + len(chunks)], mtime, size, h)
@@ -261,8 +284,9 @@ class Indexer:
         self._progress({"stage": "building graph"})
         self.store.bump_version()  # so the vector index picks up new chunks
         index = VectorIndex(self.store, self.embedder)
-        report.graph = build_graph(self.store, index, self.embedder, self.settings)
-        self._save_embedder()
+        report.graph = build_graph(self.store, index, self.embedder, self.settings, semantic=self.vectors_enabled)
+        if self.vectors_enabled:
+            self._save_embedder()
         self.store.set_meta("last_indexed", time.time())
         self.store.bump_version()
         self._progress({"stage": "idle"})

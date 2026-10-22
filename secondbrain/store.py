@@ -16,6 +16,14 @@ from pathlib import Path
 
 import numpy as np
 
+# Bump SCHEMA_VERSION and add an entry to MIGRATIONS for every schema change. SCHEMA below is the
+# version-1 baseline and must never be edited: libraries made by any earlier release are upgraded in
+# place, so updating the app never means rebuilding the index.
+SCHEMA_VERSION = 1
+MIGRATIONS: dict[int, str] = {
+    # 2: "ALTER TABLE documents ADD COLUMN example TEXT;",
+}
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS roots(path TEXT PRIMARY KEY, added REAL);
@@ -80,6 +88,18 @@ class Store:
         self._local = threading.local()
         self.write_lock = threading.RLock()
         self.conn.executescript(SCHEMA)
+        self._migrate()
+
+    def _migrate(self) -> None:
+        c = self.conn
+        version = c.execute("PRAGMA user_version").fetchone()[0] or 1  # 0.1.0/0.1.1 libraries are version 1
+        if version > SCHEMA_VERSION:
+            raise RuntimeError("This library was created by a newer version of Second Brain. "
+                               "Please update the app (your data is untouched).")
+        for target in range(version + 1, SCHEMA_VERSION + 1):
+            with self.write_lock:
+                c.executescript(f"BEGIN; {MIGRATIONS[target]} PRAGMA user_version = {target}; COMMIT;")
+        c.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     @property
     def conn(self) -> sqlite3.Connection:
@@ -175,7 +195,8 @@ class Store:
                                (*fields, doc.path)).lastrowid
         for i, (ch, emb) in enumerate(zip(chunks, embeddings)):
             cid = c.execute("INSERT INTO chunks(doc_id, ord, text, heading, page, embedding) VALUES (?,?,?,?,?,?)",
-                            (doc_id, i, ch.text, ch.heading, ch.page, np.asarray(emb, np.float32).tobytes())).lastrowid
+                            (doc_id, i, ch.text, ch.heading, ch.page,
+                             None if emb is None else np.asarray(emb, np.float32).tobytes())).lastrowid
             c.execute("INSERT INTO chunks_fts(rowid, text, heading, title) VALUES (?,?,?,?)",
                       (cid, ch.text, ch.heading, doc.title))
         c.executemany("INSERT INTO raw_links VALUES (?, ?)", [(doc_id, t) for t in doc.links])
@@ -223,9 +244,10 @@ class Store:
         mat = np.stack([np.frombuffer(r[2], np.float32) for r in rows])
         return ids, docs, mat
 
-    def iter_chunk_texts(self):
+    def iter_chunk_texts(self, missing_only: bool = False):
+        where = "WHERE c.embedding IS NULL" if missing_only else ""
         yield from self.conn.execute(
-            "SELECT c.id, c.text, c.heading, d.title FROM chunks c JOIN documents d ON d.id=c.doc_id ORDER BY c.id")
+            f"SELECT c.id, c.text, c.heading, d.title FROM chunks c JOIN documents d ON d.id=c.doc_id {where} ORDER BY c.id")
 
     def set_embeddings(self, c, pairs) -> None:
         c.executemany("UPDATE chunks SET embedding=? WHERE id=?",

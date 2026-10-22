@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from .config import Settings
-from .embeddings import get_embedder
+from .embeddings import resolve_embedder
 from .graph import discovered_connections, graph_payload
 from .indexer import Indexer, IndexReport
 from .llm import active_provider, ProviderStore, detect_llm
@@ -24,11 +24,15 @@ class Brain:
         self.settings = settings or Settings.load()
         self.store = Store(self.settings.db_path)
         stored = self.store.get_meta("embedder")
-        self.embedder = get_embedder(self.settings, stored.get("id") if stored else None)
+        choice = resolve_embedder(self.settings, stored.get("id") if stored else None)
+        self.embedder, self.embedder_note = choice.embedder, choice.note
+        if choice.degraded:
+            log.warning("embedding model unavailable: %s", choice.note)
         self.searcher = Searcher(self.store, self.embedder)
         self.progress: dict = {"stage": "idle"}
         self.last_report: IndexReport | None = None
         self.indexer = Indexer(self.store, self.embedder, self.settings, self._on_progress)
+        self.indexer.vectors_enabled = not choice.degraded
         self._job: threading.Thread | None = None
         self.on_quit = None  # set by the desktop app
 
@@ -106,7 +110,8 @@ class Brain:
         llm = detect_llm(self.settings)
         return {
             **self.store.stats(),
-            "embedder": {"id": self.embedder.id, "description": self.embedder.describe()},
+            "embedder": {"id": self.embedder.id, "description": self.embedder.describe(),
+                         "degraded": not self.indexer.vectors_enabled, "note": self.embedder_note},
             "llm": llm.name if llm else None,
             "llm_cloud": bool(llm and llm.cloud),
             "llm_choice": active_provider(self.settings, ProviderStore(self.settings.home)),

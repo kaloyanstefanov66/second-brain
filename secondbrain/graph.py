@@ -243,13 +243,16 @@ def cluster_labels(clusters: dict[int, int], terms, k: int = 3) -> dict[int, dic
 
 # ------------------------------------------------------------------ entry points
 
-def build_graph(store: Store, index: VectorIndex, embedder: Embedder, settings) -> dict:
+def build_graph(store: Store, index: VectorIndex, embedder: Embedder, settings, semantic: bool = True) -> dict:
     links = resolve_links(store)
     store.replace_edges("link", links)
-    floor = settings.min_similarity or embedder.min_similarity
     terms = term_stats(store)
-    sem = semantic_edges(store, index, links, settings.neighbors_per_doc, floor, terms, embedder.idf_weighting)
-    store.replace_edges("semantic", sem)
+    if semantic:
+        floor = settings.min_similarity or embedder.min_similarity
+        sem = semantic_edges(store, index, links, settings.neighbors_per_doc, floor, terms, embedder.idf_weighting)
+        store.replace_edges("semantic", sem)
+    else:  # embedding model unavailable: keep the similarity edges computed earlier
+        sem = [(e["src"], e["dst"], e["weight"], e["data"]) for e in store.edges(("semantic",))]
 
     nodes = [d["id"] for d in store.all_docs()]
     weighted = [(s, d, 1.0) for s, d, *_ in links] + [(s, d, w) for s, d, w, _ in sem]

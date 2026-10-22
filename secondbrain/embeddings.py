@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from dataclasses import dataclass
 import urllib.error
 import urllib.request
 import zlib
@@ -179,8 +180,8 @@ def lower_priority() -> None:
         pass
 
 
-def _model_cached(settings) -> bool:
-    name = settings.fastembed_model.split("/")[-1].lower()
+def _model_cached(settings, model: str | None = None) -> bool:
+    name = (model or settings.fastembed_model).split("/")[-1].lower()
     return any(name in p.name.lower() for p in settings.models_dir.glob("*"))
 
 
@@ -193,43 +194,94 @@ def _can_download(timeout: float = 3.0) -> bool:
         return False
 
 
-def _try(kind: str, settings) -> Embedder | None:
+HASHING_VERSION = 1  # bump only together with a new HashingEmbedder version: libraries built with it re-embed
+
+
+def _setting_default(name: str):
+    from .config import Settings
+
+    return Settings.__dataclass_fields__[name].default
+
+
+def _fastembed_ready(settings, model: str) -> bool:
+    import fastembed  # noqa: F401  (fail fast if not installed)
+
+    return _model_cached(settings, model) or _can_download()
+
+
+def _try(kind: str, settings, model: str | None = None) -> Embedder | None:
     try:
         if kind == "fastembed":
-            import fastembed  # noqa: F401  (fail fast if not installed)
-
-            if not _model_cached(settings) and not _can_download():
+            model = model or settings.fastembed_model
+            if not _fastembed_ready(settings, model):
                 return None
-            return FastEmbedEmbedder(settings.fastembed_model, str(settings.models_dir), embed_threads(settings))
+            return FastEmbedEmbedder(model, str(settings.models_dir), embed_threads(settings))
         if kind == "ollama":
-            return OllamaEmbedder(settings.ollama_url, settings.ollama_embed_model)
+            return OllamaEmbedder(settings.ollama_url, model or settings.ollama_embed_model)
         if kind == "hashing":
-            return HashingEmbedder()
+            return HashingEmbedder(int(model) if model else 2048)
     except Exception:
         return None
     raise ValueError(f"unknown embedder {kind!r} (use auto, fastembed, ollama or hashing)")
 
 
-def kind_of(embedder_id: str | None) -> str | None:
+def parse_id(embedder_id: str | None) -> tuple[str | None, str | None]:
+    """'fastembed:BAAI/bge-small-en-v1.5' -> ('fastembed', 'BAAI/bge-small-en-v1.5'); 'hashing-v1-2048' -> ('hashing', '2048')."""
     if not embedder_id:
-        return None
-    return embedder_id.split(":")[0].split("-")[0]
+        return None, None
+    if embedder_id.startswith("hashing-v"):
+        _, version, dim = embedder_id.split("-")
+        return ("hashing", dim) if version == f"v{HASHING_VERSION}" else ("hashing-old", None)
+    kind, _, model = embedder_id.partition(":")
+    return kind, model or None
 
 
-def get_embedder(settings, stored_id: str | None = None) -> Embedder:
-    """Pick an embedder. With "auto", prefer whatever the existing index was built with."""
-    if settings.embedder != "auto":
+def kind_of(embedder_id: str | None) -> str | None:
+    return parse_id(embedder_id)[0]
+
+
+@dataclass
+class EmbedderChoice:
+    embedder: Embedder
+    degraded: bool = False  # the library's own model is unavailable: keep its vectors, don't re-embed
+    note: str = ""
+
+
+def resolve_embedder(settings, stored_id: str | None = None) -> EmbedderChoice:
+    """Pick the embedder, protecting an existing library from needless re-embedding.
+
+    An existing library keeps the exact model it was built with, even if a newer version of the app
+    ships a different default. Only an explicit choice (`--embedder`, or a model set in config.toml)
+    switches models. If the library's model can't be loaded right now, fall back to keyword search
+    instead of re-embedding everything with something else.
+    """
+    explicit = settings.embedder != "auto"
+    kind, model = parse_id(stored_id)
+    if kind in ("fastembed", "ollama", "hashing") and (not explicit or settings.embedder == kind):
+        for name, setting in (("fastembed", "fastembed_model"), ("ollama", "ollama_embed_model")):
+            if kind == name and getattr(settings, setting) != _setting_default(setting):
+                model = getattr(settings, setting)  # you configured a model on purpose: honour it
+        e = _try(kind, settings, model)
+        if e is not None:
+            return EmbedderChoice(e)
+        if explicit:
+            raise RuntimeError(f"embedder {settings.embedder!r} is not available")
+        fallback = next((x for x in (_try(k, settings) for k in ("ollama", "hashing") if k != kind) if x), HashingEmbedder())
+        what = f"{model} ({kind})" if model and kind != "hashing" else kind
+        return EmbedderChoice(fallback, degraded=True,
+                              note=f"{what} couldn't be loaded, so search is keyword-only for now. "
+                                   "Your index is kept as is and nothing is re-embedded.")
+    if explicit:
         e = _try(settings.embedder, settings)
         if e is None:
             raise RuntimeError(f"embedder {settings.embedder!r} is not available")
-        return e
-    order = ["fastembed", "ollama", "hashing"]
-    stored = kind_of(stored_id)
-    if stored in order:
-        order.remove(stored)
-        order.insert(0, stored)
-    for kind in order:
-        e = _try(kind, settings)
+        return EmbedderChoice(e)
+    for k in ("fastembed", "ollama", "hashing"):
+        e = _try(k, settings)
         if e is not None:
-            return e
-    return HashingEmbedder()
+            return EmbedderChoice(e)
+    return EmbedderChoice(HashingEmbedder())
+
+
+def get_embedder(settings, stored_id: str | None = None) -> Embedder:
+    return resolve_embedder(settings, stored_id).embedder

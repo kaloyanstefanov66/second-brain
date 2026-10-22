@@ -111,8 +111,9 @@
       $("#status-index").textContent = s.documents ? `${s.documents.toLocaleString()} documents indexed` : "Nothing indexed yet";
     }
     const lexical = s.embedder.id.startsWith("hashing");
-    $("#dot-embed").className = lexical ? "dot warn" : "dot ok";
-    $("#status-embed").textContent = lexical ? "Lexical embeddings (add a model for semantic search)" : `Embeddings: ${s.embedder.description}`;
+    $("#dot-embed").className = lexical || s.embedder.degraded ? "dot warn" : "dot ok";
+    $("#status-embed").textContent = s.embedder.degraded ? `Semantic search paused: ${s.embedder.note}`
+      : lexical ? "Lexical embeddings (add a model for semantic search)" : `Embeddings: ${s.embedder.description}`;
     $("#dot-llm").className = s.llm ? "dot ok" : "dot warn";
     $("#status-llm").textContent = s.llm ? `Answers: ${s.llm}${s.llm_cloud ? " · cloud" : ""}`
       : s.llm_choice !== "auto" && s.llm_choice !== "none" ? "Selected engine unavailable: quoting files" : "Quoted answers (no local LLM running)";
