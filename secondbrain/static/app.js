@@ -100,7 +100,10 @@
 
   function renderStatus(s) {
     const p = s.progress || {};
-    if (s.busy) {
+    if (s.paused) {
+      $("#dot-index").className = "dot warn";
+      $("#status-index").textContent = p.total ? `Indexing paused (${p.current} of ${p.total})` : "Indexing paused";
+    } else if (s.busy) {
       $("#dot-index").className = "dot busy";
       $("#status-index").textContent = p.stage === "indexing" && p.total ? `Indexing ${p.current + 1}/${p.total}` : `${cap(p.stage || "working")}…`;
     } else {
@@ -142,6 +145,23 @@
     if (state.view === "library") loadLibrary();
     if (state.view === "home") loadHome(true);
   }
+
+  // ================================================================ pause / resume indexing
+
+  const indexControl = (s) => s.paused
+    ? `<button class="btn small primary" data-index-action="resume">${icon("i-play", "width:13px;height:13px")}Resume</button>`
+    : s.busy ? `<button class="btn small" data-index-action="pause">${icon("i-pause", "width:13px;height:13px")}Pause</button>` : "";
+
+  document.addEventListener("click", async (ev) => {
+    const b = ev.target.closest("[data-index-action]");
+    if (!b) return;
+    b.disabled = true;
+    try {
+      await api(`/api/index/${b.dataset.indexAction}`, { method: "POST" });
+      toast(b.dataset.indexAction === "pause" ? "Indexing paused. It stays paused until you resume, even after a restart." : "Indexing resumed");
+      await pollStatusSoon();
+    } catch (e) { toast(e.message); b.disabled = false; }
+  });
 
   // ================================================================ home & onboarding
 
@@ -191,8 +211,14 @@
     const box = $("#home-progress");
     if (!box) return;
     const p = s.progress || {};
-    box.innerHTML = s.busy ? `<div class="banner card"><span class="spinner"></span><span>${p.stage === "indexing" && p.total ? `Indexing your notes: ${p.current + 1} of ${p.total}` : `${cap(p.stage || "working")}…`}</span>
-      <div class="progress"><div style="width:${p.total ? ((p.current + 1) / p.total) * 100 : 100}%"></div></div></div>` : "";
+    const first = !s.last_indexed;
+    if (s.paused) {
+      box.innerHTML = `<div class="banner card">${icon("i-pause")}<span>Indexing paused${p.total ? `: ${p.current} of ${p.total} files done` : ""}. Search and answers keep working with what's indexed so far.</span>
+        <span style="flex:1"></span>${indexControl(s)}</div>`;
+      return;
+    }
+    box.innerHTML = s.busy ? `<div class="banner card"><span class="spinner"></span><span>${p.stage === "indexing" && p.total ? `Indexing your notes: ${p.current + 1} of ${p.total}` : `${cap(p.stage || "working")}…`}${first ? `<br><span class="muted">The first index is the heavy one: it reads every document once. Later updates only touch changed files.</span>` : ""}</span>
+      <div class="progress"><div style="width:${p.total ? ((p.current + 1) / p.total) * 100 : 100}%"></div></div>${indexControl(s)}</div>` : "";
   }
 
   $("#home-search").addEventListener("keydown", (e) => {
@@ -627,11 +653,12 @@
 
   function renderProgress(s) {
     const p = s.progress || {};
-    $("#index-progress").classList.toggle("hidden", !s.busy);
-    if (s.busy) {
-      const pct = p.total ? ((p.current + 1) / p.total) * 100 : 100;
+    $("#index-progress").classList.toggle("hidden", !s.busy && !s.paused);
+    if (s.busy || s.paused) {
+      const pct = p.total ? ((p.current + (s.paused ? 0 : 1)) / p.total) * 100 : 100;
       $("#progress-bar").style.width = `${pct}%`;
-      $("#progress-label").textContent = p.file ? `${cap(p.stage)} · ${p.file}` : `${cap(p.stage || "working")}…`;
+      $("#progress-label").innerHTML = `${indexControl(s)} ${esc(s.paused ? `Paused${p.total ? ` · ${p.current} of ${p.total} files` : ""}`
+        : p.file ? `${cap(p.stage)} · ${p.file}` : `${cap(p.stage || "working")}…`)}`;
     }
     const r = s.last_report;
     $("#index-report").innerHTML = !s.busy && r && r.failed.length

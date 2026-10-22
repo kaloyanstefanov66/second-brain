@@ -113,6 +113,11 @@ brain keys remove anthropic
 | Browser bookmarks | Netscape `bookmarks.html` export (every browser), or Chrome/Edge `Bookmarks` JSON. Folders become tags. Set `fetch_bookmarks = true` to also download and index each page; this is the only feature that touches the network, and it's off by default. |
 
 Indexing is incremental. Unchanged files are skipped by mtime/size, then by content hash.
+The first index is the heavy part: it runs the embedding model over every passage. To keep the computer responsive,
+the app runs at background priority and the model uses half your CPU cores (`index_threads`). You can **pause**
+indexing from Home or the Library at any time: it stays paused across restarts until you resume, and search
+keeps working with what's indexed so far. When the app starts, it finishes an interrupted index and picks up
+changes made while it was closed.
 The server re-indexes changed files a couple of seconds after they change (`--no-watch` turns this off).
 
 ## Home: everything, organised
@@ -175,6 +180,7 @@ llm = "auto"                         # auto | none | ollama | local | anthropic 
 llm_model = "llama3.2"               # default local model
 local_url = "http://127.0.0.1:1234/v1"  # OpenAI-compatible local server
 chunk_chars = 1000
+index_threads = 0                    # CPU threads for the embedding model; 0 = half your cores
 neighbors_per_doc = 6
 min_similarity = 0.0                 # 0 = calibrated per embedder
 fetch_bookmarks = false

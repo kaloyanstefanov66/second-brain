@@ -49,6 +49,17 @@ class Brain:
         self.last_report = self.indexer.reindex_all()
         return self.last_report
 
+    def pause(self) -> None:
+        self.indexer.pause()
+
+    def resume(self) -> None:
+        self.indexer.resume()
+
+    def catch_up(self) -> None:
+        """On startup: finish an interrupted index and pick up changes made while the app was closed."""
+        if self.store.roots():
+            self.run_in_background(self.reindex)
+
     def remove(self, path: str) -> int:
         return self.indexer.remove_path(path)
 
@@ -101,6 +112,7 @@ class Brain:
             "llm_choice": active_provider(self.settings, ProviderStore(self.settings.home)),
             "progress": self.progress,
             "busy": self.busy,
+            "paused": self.indexer.paused,
             "last_report": self.last_report.to_dict() if self.last_report else None,
             "home": str(self.settings.home),
             "desktop": self.on_quit is not None,

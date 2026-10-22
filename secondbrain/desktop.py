@@ -87,23 +87,27 @@ class Runtime:
         import uvicorn
 
         from .brain import Brain
-        from .embeddings import _model_cached
+        from .embeddings import _model_cached, lower_priority
         from .server import create_app
         from .watcher import FolderWatcher
 
+        lower_priority()
+        msg = "Opening your library…"
         if self.settings.embedder in ("auto", "fastembed") and not _model_cached(self.settings):
             try:
                 import fastembed  # noqa: F401
 
-                say("Downloading the local language model (one time, about 70 MB)…")
+                # the download happens while the Brain loads its embedder, so say so up front
+                msg = "Downloading the local language model (one time, about 70 MB). This can take a minute…"
             except ImportError:
                 pass
-        say("Opening your library…")
+        say(msg)
         brain = Brain(self.settings)
         if brain.ensure_ready():
             say("Updating your library for the new model…")
         brain.on_quit = lambda: self.quit()
         FolderWatcher(brain).start()
+        brain.catch_up()
 
         port = free_port(self.settings.port)
         config = uvicorn.Config(create_app(brain), host="127.0.0.1", port=port, log_level="warning",

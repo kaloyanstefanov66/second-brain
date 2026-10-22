@@ -192,11 +192,15 @@ def cmd_serve(args):
 
     from .server import create_app
 
+    from .embeddings import lower_priority
+
+    lower_priority()  # a long-running background app: never compete with what you're doing
     brain = _brain(args)
     if not getattr(args, "no_watch", False):
         from .watcher import FolderWatcher
 
         FolderWatcher(brain).start()
+    brain.catch_up()
     host, port = args.host or brain.settings.host, args.port or brain.settings.port
     url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
     print(f"Second Brain running at {url}  (embeddings: {brain.embedder.describe()})")

@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import urllib.error
 import urllib.request
@@ -107,11 +108,11 @@ class HashingEmbedder(Embedder):
 class FastEmbedEmbedder(Embedder):
     min_similarity = 0.62
 
-    def __init__(self, model: str, cache_dir: str):
+    def __init__(self, model: str, cache_dir: str, threads: int | None = None):
         from fastembed import TextEmbedding  # optional dependency
 
         self.model_name = model
-        self._model = TextEmbedding(model_name=model, cache_dir=cache_dir)
+        self._model = TextEmbedding(model_name=model, cache_dir=cache_dir, threads=threads)
         self.dim = len(next(iter(self._model.embed(["probe"]))))
         self.id = f"fastembed:{model}"
 
@@ -159,6 +160,25 @@ class OllamaEmbedder(Embedder):
         return f"{self.model} via local Ollama"
 
 
+def embed_threads(settings) -> int:
+    """Leave half the cores to the rest of the computer unless told otherwise."""
+    return settings.index_threads or max(1, (os.cpu_count() or 2) // 2)
+
+
+def lower_priority() -> None:
+    """Run at background priority: the OS serves your other apps first while indexing runs."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            BELOW_NORMAL_PRIORITY_CLASS = 0x4000
+            ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(10)
+    except (OSError, AttributeError):
+        pass
+
+
 def _model_cached(settings) -> bool:
     name = settings.fastembed_model.split("/")[-1].lower()
     return any(name in p.name.lower() for p in settings.models_dir.glob("*"))
@@ -180,7 +200,7 @@ def _try(kind: str, settings) -> Embedder | None:
 
             if not _model_cached(settings) and not _can_download():
                 return None
-            return FastEmbedEmbedder(settings.fastembed_model, str(settings.models_dir))
+            return FastEmbedEmbedder(settings.fastembed_model, str(settings.models_dir), embed_threads(settings))
         if kind == "ollama":
             return OllamaEmbedder(settings.ollama_url, settings.ollama_embed_model)
         if kind == "hashing":

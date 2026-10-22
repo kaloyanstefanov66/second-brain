@@ -9,12 +9,17 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Callable
 
+import numpy as np
+
 from .chunking import Chunk, chunk_sections
 from .embeddings import Embedder
 from .graph import build_graph
 from .loaders import LoadedDoc, Section, fetch_page_text, is_supported, iter_files, load_file
 from .search import VectorIndex
 from .store import Store
+
+
+EMBED_BATCH = 64
 
 
 @dataclass
@@ -54,6 +59,37 @@ class Indexer:
         self.store, self.embedder, self.settings = store, embedder, settings
         self.on_progress = on_progress or (lambda p: None)
         self.lock = threading.RLock()
+        self._last_progress: dict = {}
+        self._resume = threading.Event()
+        if not store.get_meta("index_paused", False):  # a pause survives restarts
+            self._resume.set()
+
+    # ------------------------------------------------------------ pause / resume
+
+    @property
+    def paused(self) -> bool:
+        return not self._resume.is_set()
+
+    def pause(self) -> None:
+        self.store.set_meta("index_paused", True)
+        self._resume.clear()
+
+    def resume(self) -> None:
+        self.store.set_meta("index_paused", False)
+        self._resume.set()
+
+    def checkpoint(self) -> None:
+        """Block here while paused. Called between files and between embedding batches."""
+        if self._resume.is_set():
+            return
+        before = dict(self._last_progress)
+        self.on_progress({**before, "stage": "paused"})
+        self._resume.wait()
+        self.on_progress(before)
+
+    def _progress(self, p: dict) -> None:
+        self._last_progress = p
+        self.on_progress(p)
 
     # ------------------------------------------------------------ public API
 
@@ -73,8 +109,9 @@ class Indexer:
         with self.lock:
             rows = list(self.store.iter_chunk_texts())
             for i in range(0, len(rows), 256):
+                self.checkpoint()
                 batch = rows[i:i + 256]
-                self.on_progress({"stage": "re-embedding", "current": i, "total": len(rows)})
+                self._progress({"stage": "re-embedding", "current": i, "total": len(rows)})
                 texts = [f"{' — '.join(p for p in (r['title'], r['heading']) if p)}\n{r['text']}" for r in batch]
                 vecs = self.embedder.embed(texts)
                 with self.store.tx() as c:
@@ -95,13 +132,13 @@ class Indexer:
                     self.store.add_root(str(root))
                 files = list(iter_files(root))
                 for i, f in enumerate(files):
-                    self.on_progress({"stage": "indexing", "current": i, "total": len(files), "file": str(f)})
+                    self._progress({"stage": "indexing", "current": i, "total": len(files), "file": str(f)})
                     self.index_file(f, report)
                 if root.is_dir():
                     seen = {str(f) for f in files}
                     for source in self.store.sources_under(str(root)) - seen:
                         report.removed += self.remove_source(source)
-            self.finalize(report)
+            self._finalize_if_changed(report)
             report.seconds = time.time() - t0
             return report
 
@@ -120,7 +157,7 @@ class Indexer:
                     report.removed += self.remove_source(str(p))
                     for source in self.store.sources_under(str(p)):  # a deleted folder
                         report.removed += self.remove_source(source)
-            self.finalize(report)
+            self._finalize_if_changed(report)
             report.seconds = time.time() - t0
             return report
 
@@ -142,6 +179,7 @@ class Indexer:
     # ------------------------------------------------------------ per file
 
     def index_file(self, path: Path, report: IndexReport) -> None:
+        self.checkpoint()
         report.files += 1
         try:
             st = path.stat()
@@ -186,7 +224,11 @@ class Indexer:
                 chunks = [Chunk(doc.title)]
             plans.append((doc, h, existed, chunks, len(texts)))
             texts += [embed_text(doc, ch) for ch in chunks]
-        vecs = self.embedder.embed(texts)
+        batches = []
+        for i in range(0, len(texts), EMBED_BATCH):  # small batches so a pause takes effect quickly
+            self.checkpoint()
+            batches.append(self.embedder.embed(texts[i:i + EMBED_BATCH]))
+        vecs = np.concatenate(batches)
         with self.store.tx() as c:
             for doc, h, existed, chunks, offset in plans:
                 self.store.upsert_document(c, doc, chunks, vecs[offset:offset + len(chunks)], mtime, size, h)
@@ -209,15 +251,21 @@ class Indexer:
 
     # ------------------------------------------------------------ graph
 
+    def _finalize_if_changed(self, report: IndexReport) -> None:
+        if report.added or report.updated or report.removed or not self.store.get_meta("last_indexed"):
+            self.finalize(report)
+        else:  # nothing changed: the graph is still current
+            self._progress({"stage": "idle"})
+
     def finalize(self, report: IndexReport) -> None:
-        self.on_progress({"stage": "building graph"})
+        self._progress({"stage": "building graph"})
         self.store.bump_version()  # so the vector index picks up new chunks
         index = VectorIndex(self.store, self.embedder)
         report.graph = build_graph(self.store, index, self.embedder, self.settings)
         self._save_embedder()
         self.store.set_meta("last_indexed", time.time())
         self.store.bump_version()
-        self.on_progress({"stage": "idle"})
+        self._progress({"stage": "idle"})
 
     def _save_embedder(self) -> None:
         self.store.set_meta("embedder", {"id": self.embedder.id, "dim": self.embedder.dim,

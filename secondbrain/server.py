@@ -144,6 +144,16 @@ def create_app(brain: Brain) -> FastAPI:
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
 
+    @app.post("/api/index/pause")
+    def pause_indexing():
+        brain.pause()
+        return {"paused": True}
+
+    @app.post("/api/index/resume")
+    def resume_indexing():
+        brain.resume()
+        return {"paused": False}
+
     @app.post("/api/quit")
     def quit_app():
         if brain.on_quit is None:

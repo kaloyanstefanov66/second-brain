@@ -34,6 +34,7 @@ class Settings:
     chunk_chars: int = 1000
     chunk_overlap: int = 150
     max_file_mb: int = 50
+    index_threads: int = 0  # CPU threads for the embedding model; 0 = half your cores (keeps the computer responsive)
     fetch_bookmarks: bool = False  # download bookmarked pages (the only network access, off by default)
 
     # Graph
