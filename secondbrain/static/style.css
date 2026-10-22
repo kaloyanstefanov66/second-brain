@@ -246,6 +246,54 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--text-3); border: 1
 .notice { padding: 10px 12px; border-radius: 8px; background: var(--surface-2); font-size: 12.5px; color: var(--text-2); margin-top: 10px; }
 .notice.error { color: var(--danger); }
 
+/* ---------- home ---------- */
+.page.wide { max-width: 1120px; }
+.home-head { display: flex; align-items: flex-start; gap: 16px; justify-content: space-between; }
+.home-head .lede { margin-bottom: 18px; }
+.recent { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin: 18px 0 6px; }
+.recent-card { padding: 10px 12px; cursor: pointer; min-width: 0; }
+.recent-card:hover, .topic-doc:hover { border-color: var(--border-strong); }
+.recent-card .t { font-weight: 560; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.recent-card .when { font-size: 11.5px; color: var(--text-3); }
+.topics { columns: 3 300px; column-gap: 12px; }
+.topic { break-inside: avoid; margin-bottom: 12px; padding: 14px 14px 10px; display: inline-block; width: 100%; }
+.topic-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.topic-head .sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.topic-head .lbl { font-weight: 620; font-size: 14px; flex: 1; min-width: 0; }
+.topic-head .ct { font-size: 12px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.topic-doc { display: flex; align-items: center; gap: 8px; padding: 5px 6px; margin: 0 -6px; border-radius: 6px; cursor: pointer; font-size: 13.5px; border: 1px solid transparent; }
+.topic-doc:hover { background: var(--surface-2); }
+.topic-doc .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topic-doc svg { width: 14px; height: 14px; color: var(--text-3); }
+.topic-more { margin-top: 4px; }
+.unsorted { display: flex; flex-wrap: wrap; gap: 6px; }
+.unsorted .chip { display: inline-flex; align-items: center; gap: 5px; }
+.unsorted .chip svg { width: 12px; height: 12px; }
+.banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; }
+.banner .progress { flex: 1; margin: 0; }
+
+/* ---------- onboarding ---------- */
+.onboard-head { text-align: center; max-width: 620px; margin: 6vh auto 26px; }
+.onboard-head h1 { font-size: 26px; }
+.brand-mark.big { width: 52px; height: 52px; border-radius: 14px; margin: 0 auto 16px; }
+.brand-mark.big svg { width: 28px; height: 28px; }
+#onboard-body { max-width: 760px; margin: 0 auto; }
+.cand-group { margin-bottom: 18px; }
+.cand-group h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-3); margin: 0 0 6px; font-weight: 650; }
+.cand { display: flex; align-items: center; gap: 12px; padding: 10px 14px; cursor: pointer; margin-bottom: 6px; }
+.cand:hover { border-color: var(--border-strong); }
+.cand input { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
+.cand .body { flex: 1; min-width: 0; }
+.cand .t { font-weight: 600; font-size: 14px; }
+.cand .t .cand-app { font-weight: 500; color: var(--text-3); font-size: 12.5px; margin-left: 6px; }
+.cand .p { font-family: var(--mono); font-size: 11.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cand .d { font-size: 12px; color: var(--text-3); }
+.cand .n { font-size: 12.5px; color: var(--text-2); white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+.cand.added { opacity: .6; cursor: default; }
+.onboard-foot { display: flex; align-items: center; gap: 12px; position: sticky; bottom: 0; background: var(--bg); padding: 14px 0; border-top: 1px solid var(--border); margin-top: 8px; }
+.onboard-foot .muted { font-size: 12.5px; }
+.scanning { text-align: center; color: var(--text-2); padding: 30px 0; }
+
 /* ---------- settings ---------- */
 #engine-choice { margin-bottom: 10px; }
 #engine-choice .chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 12px; font-size: 13px; }
@@ -318,5 +366,9 @@ kbd { font-family: var(--mono); font-size: 11px; color: var(--text-3); border: 1
   .graph-panel { width: auto; right: 16px; top: 12px; left: 12px; max-height: 60%; }
   #graph-panel-toggle { display: inline-flex; }
   .result-why { display: none; }
+  .home-head { flex-direction: column; gap: 0; }
+  .home-head .btn { margin-bottom: 12px; }
+  .recent { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cand .n { display: none; }
 }
 ::highlight(cited) { background-color: var(--mark); }

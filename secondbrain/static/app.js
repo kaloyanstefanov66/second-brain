@@ -37,7 +37,7 @@
   // ================================================================ navigation
 
   function show(view) {
-    if (!document.getElementById(`view-${view}`)) view = "ask";
+    if (!document.getElementById(`view-${view}`)) view = "home";
     state.view = view;
     $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
     $$("[data-view]").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
@@ -46,6 +46,7 @@
     if (view === "connections") loadConnections();
     if (view === "library") loadLibrary();
     if (view === "settings") loadSettings();
+    if (view === "home") loadHome();
     if (view === "search") setTimeout(() => $("#search-input").focus(), 0);
     if (view === "ask") setTimeout(() => $("#ask-input").focus(), 0);
   }
@@ -115,12 +116,16 @@
       : s.llm ? `Answered locally by ${s.llm} · Enter to ask · Shift+Enter for a new line`
       : "No answer engine: answers are quoted from your files. Start Ollama or add an API key in Settings.";
     if (state.view === "library") renderProgress(s);
+    if (state.view === "home") {
+      renderHomeProgress(s);
+      if (s.busy && !state.overview && s.documents === 0) $("#home-summary").textContent = "Indexing your notes for the first time…";
+    }
     if (!state.kindsRendered && s.by_kind) renderKindChips(s.by_kind);
   }
   const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
   function onIndexFinished(s) {
-    state.graphData = null; state.docs = null; state.connections = null;
+    state.graphData = null; state.docs = null; state.connections = null; state.overview = null;
     if (s.last_report) {
       const r = s.last_report;
       toast(`Indexed: ${r.added} added, ${r.updated} updated, ${r.removed} removed · ${r.graph.discovered ?? 0} discovered connections`);
@@ -130,6 +135,125 @@
     if (state.view === "graph") loadGraph();
     if (state.view === "connections") loadConnections();
     if (state.view === "library") loadLibrary();
+    if (state.view === "home") loadHome(true);
+  }
+
+  // ================================================================ home & onboarding
+
+  const relTime = (t) => {
+    const s = Date.now() / 1000 - t;
+    if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`;
+    if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+    if (s < 86400 * 30) return `${Math.round(s / 86400)} days ago`;
+    return new Date(t * 1000).toLocaleDateString();
+  };
+  const topicColor = (id) => id >= 0 && id < window.CLUSTER_VARS.length ? `var(${window.CLUSTER_VARS[id]})` : "var(--series-other)";
+  const capFirst = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+  async function loadHome(force) {
+    const s = state.status || (state.status = await api("/api/status").catch(() => null));
+    if (!s) return;
+    const empty = !s.documents && !s.roots.length;
+    $("#onboard").classList.toggle("hidden", !empty && !state.onboarding);
+    $("#home-main").classList.toggle("hidden", empty || state.onboarding);
+    if (empty || state.onboarding) {
+      if (!state.discovered && !state.scanning) runDiscovery();  // first launch: start looking right away
+      return;
+    }
+    renderHomeProgress(s);
+    if (state.overview && !force) return;
+    try { state.overview = await api("/api/overview"); } catch (e) { return toast(e.message); }
+    const ov = state.overview;
+    const nTopics = ov.topics.length;
+    $("#home-summary").textContent = `${s.documents.toLocaleString()} documents · ${s.words.toLocaleString()} words · ${nTopics} topic${nTopics === 1 ? "" : "s"} · ${s.discovered} hidden connection${s.discovered === 1 ? "" : "s"}`;
+    $("#home-recent").innerHTML = ov.recent.length ? `<div class="section-title" style="margin-top:6px">Recently edited</div><div class="recent">${ov.recent.map((d) => `
+      <div class="recent-card card" data-id="${d.id}">${kindBadge(d.kind)}<div class="t">${esc(d.title)}</div><div class="when">${relTime(d.mtime)}</div></div>`).join("")}</div>` : "";
+    $("#home-topics").innerHTML = ov.topics.map((t) => `
+      <div class="topic card">
+        <div class="topic-head"><span class="sw" style="background:${topicColor(t.id)}"></span><span class="lbl">${esc(capFirst(t.label))}</span><span class="ct">${t.docs.length}</span></div>
+        ${t.docs.map((d, i) => `<div class="topic-doc ${i >= 6 ? "hidden" : ""}" data-id="${d.id}">${icon(KIND_ICON[d.kind] || "i-note")}<span class="t">${esc(d.title)}</span></div>`).join("")}
+        ${t.docs.length > 6 ? `<button class="linkish topic-more">Show all ${t.docs.length}</button>` : ""}
+      </div>`).join("") || `<div class="notice">Topics appear once a few documents talk about related things.</div>`;
+    $("#home-unsorted").innerHTML = ov.unsorted.length ? `<div class="section-title">Not in a topic yet <span class="muted" style="font-weight:400">${ov.unsorted.length}</span></div>
+      <div class="unsorted">${ov.unsorted.slice(0, 120).map((d) => `<button class="chip" data-id="${d.id}">${icon(KIND_ICON[d.kind] || "i-note")}${esc(d.title)}</button>`).join("")}</div>` : "";
+    $$("#view-home [data-id]").forEach((el) => el.addEventListener("click", () => openDoc(+el.dataset.id)));
+    $$("#home-topics .topic-more").forEach((b) => b.addEventListener("click", () => {
+      $$(".topic-doc.hidden", b.parentElement).forEach((el) => el.classList.remove("hidden")); b.remove();
+    }));
+  }
+
+  function renderHomeProgress(s) {
+    const box = $("#home-progress");
+    if (!box) return;
+    const p = s.progress || {};
+    box.innerHTML = s.busy ? `<div class="banner card"><span class="spinner"></span><span>${p.stage === "indexing" && p.total ? `Indexing your notes: ${p.current + 1} of ${p.total}` : `${cap(p.stage || "working")}…`}</span>
+      <div class="progress"><div style="width:${p.total ? ((p.current + 1) / p.total) * 100 : 100}%"></div></div></div>` : "";
+  }
+
+  $("#home-search").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || !e.target.value.trim()) return;
+    $("#search-input").value = e.target.value; e.target.value = "";
+    show("search"); runSearch();
+  });
+  $("#find-more").addEventListener("click", () => { state.onboarding = true; state.discovered = null; loadHome(); });
+
+  async function runDiscovery() {
+    state.scanning = true;
+    const body = $("#onboard-body");
+    $("#onboard-title").textContent = state.status?.documents ? "Find more notes" : "Let's find your notes";
+    body.innerHTML = `<div class="scanning"><span class="spinner"></span> Looking in your home folder…</div>`;
+    try {
+      const { candidates } = await api("/api/discover");
+      state.discovered = candidates;
+      renderCandidates();
+    } catch (e) {
+      body.innerHTML = `<div class="notice error">Couldn't look for notes: ${esc(e.message)}</div>`;
+    } finally { state.scanning = false; }
+  }
+
+  function renderCandidates() {
+    const cands = state.discovered, body = $("#onboard-body");
+    if (!cands.length) {
+      body.innerHTML = `<div class="notice">No notes found in the usual places. Add a folder in the <a href="#library">Library</a>, or drop files there.</div>`;
+      return;
+    }
+    const groups = [["Note apps", (c) => c.kind === "vault" || c.kind === "logseq"], ["Folders", (c) => c.kind === "folder"], ["Browser bookmarks", (c) => c.kind === "bookmarks"]];
+    const n = (k, word, more = "") => `${k.toLocaleString()}${more} ${word}${k === 1 && !more ? "" : "s"}`;
+    const count = (c) => c.kind === "bookmarks" ? n(c.bookmarks, "bookmark")
+      : [c.notes ? n(c.notes, "note", c.partial ? "+" : "") : "", c.docs ? n(c.docs, "document", c.partial ? "+" : "") : ""].filter(Boolean).join(" · ");
+    body.innerHTML = groups.map(([title, test]) => {
+      const items = cands.map((c, i) => [c, i]).filter(([c]) => test(c));
+      return items.length ? `<div class="cand-group"><h3>${title}</h3>${items.map(([c, i]) => `
+        <label class="cand card ${c.added ? "added" : ""}">
+          <input type="checkbox" data-i="${i}" ${c.selected ? "checked" : ""} ${c.added ? "disabled" : ""}>
+          <div class="body"><div class="t">${esc(c.label)}${c.app && c.kind !== "bookmarks" ? `<span class="cand-app">${esc(c.app)}</span>` : ""}</div>
+            <div class="p" title="${esc(c.path)}">${esc(c.path)}</div>
+            ${c.added ? `<div class="d">Already in your library</div>` : c.detail ? `<div class="d">${esc(c.detail)}</div>` : c.inside.length ? `<div class="d">Includes ${esc(c.inside.join(", "))}</div>` : ""}</div>
+          <div class="n">${count(c)}</div>
+        </label>`).join("")}</div>` : "";
+    }).join("") + `<div class="onboard-foot"><button class="btn primary" id="index-selected">${icon("i-check")}<span></span></button>
+      ${state.status?.documents ? `<button class="btn" id="onboard-cancel">Cancel</button>` : ""}
+      <span class="muted">Your files are never modified. Change this anytime in the Library.</span></div>`;
+    const update = () => {
+      const n = $$("#onboard-body input:checked").length;
+      $("#index-selected span").textContent = n ? `Index ${n} source${n === 1 ? "" : "s"}` : "Select something to index";
+      $("#index-selected").disabled = !n;
+    };
+    $$("#onboard-body input").forEach((cb) => cb.addEventListener("change", update));
+    update();
+    $("#onboard-cancel")?.addEventListener("click", () => { state.onboarding = false; loadHome(); });
+    $("#index-selected").addEventListener("click", async () => {
+      const paths = $$("#onboard-body input:checked").map((cb) => cands[+cb.dataset.i].path);
+      try {
+        await api("/api/sources/bulk", { method: "POST", body: JSON.stringify({ paths }) });
+        state.onboarding = false; state.overview = null; state.wasBusy = true;
+        state.status = await api("/api/status");
+        toast("Indexing started. Your notes will appear here as they're processed.");
+        $("#onboard").classList.add("hidden"); $("#home-main").classList.remove("hidden");
+        renderHomeProgress(state.status);
+        setTimeout(pollStatus, 300);
+      } catch (e) { toast(e.message, 5000); }
+    });
   }
 
   // ================================================================ ask
@@ -539,6 +663,7 @@
     startJob(api("/api/sources", { method: "POST", body: JSON.stringify({ path }) }), `Indexing ${path}…`);
     $("#add-path").value = "";
   });
+  $("#auto-find-btn").addEventListener("click", () => { state.onboarding = true; state.discovered = null; show("home"); });
   $("#reindex-btn").addEventListener("click", () => startJob(api("/api/reindex", { method: "POST" }), "Re-scanning sources…"));
 
   const dz = $("#dropzone"), fileInput = $("#file-input");
@@ -741,7 +866,7 @@
 
   // ================================================================ boot
 
-  show((location.hash || "#ask").slice(1));
+  show((location.hash || "#home").slice(1));
   pollStatus();
   loadSuggestions();
   runSearch();

@@ -10,6 +10,7 @@ from pathlib import Path
 from .loaders import IGNORED_DIRS, is_supported
 
 log = logging.getLogger("secondbrain")
+FILE_ROOT_INTERVAL = 15 * 60  # seconds
 
 
 class FolderWatcher:
@@ -53,10 +54,20 @@ class FolderWatcher:
         threading.Thread(target=self._loop, daemon=True).start()
 
     def _loop(self) -> None:
+        last_file_sync = time.time()
         while True:
             time.sleep(0.5)
             self.sync_roots()
             now = time.time()
+            if now - last_file_sync > FILE_ROOT_INTERVAL and not self.brain.busy:
+                # Browser bookmark stores change on every visit; re-read them periodically instead.
+                last_file_sync = now
+                files = [Path(r) for r in self.brain.store.roots() if Path(r).is_file()]
+                if files:
+                    try:
+                        self.brain.indexer.sync_files(files)
+                    except Exception:
+                        log.exception("bookmark sync failed")
             with self.lock:
                 ready = [p for p, t in self.pending.items() if now - t >= self.debounce]
                 for p in ready:

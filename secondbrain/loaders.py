@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 import re
 import zipfile
 from dataclasses import dataclass, field
@@ -20,7 +21,13 @@ TEXT_EXT = {".md", ".markdown", ".mdx", ".txt", ".text", ".org", ".rst"}
 HTML_EXT = {".html", ".htm", ".xhtml"}
 SUPPORTED_EXT = TEXT_EXT | HTML_EXT | {".pdf", ".docx", ".json"}
 IGNORED_DIRS = {".git", ".hg", ".svn", "node_modules", ".venv", "venv", "__pycache__",
-                ".obsidian", ".trash", ".Trash", ".cache", ".idea", ".vscode", "dist", "build"}
+                ".obsidian", ".trash", ".Trash", ".cache", ".idea", ".vscode", "dist", "build",
+                "site-packages", "vendor", "target", "bower_components"}
+# Browser bookmark stores, read in place (no export needed).
+BROWSER_FILES = {"Bookmarks", "places.sqlite", "Bookmarks.plist"}
+# A folder with version control and one of these is a code project: its READMEs aren't your notes.
+PROJECT_MARKERS = {"package.json", "pyproject.toml", "setup.py", "Cargo.toml", "go.mod", "pom.xml",
+                   "build.gradle", "Gemfile", "composer.json", "CMakeLists.txt", "Makefile"}
 
 
 @dataclass
@@ -61,25 +68,56 @@ class LoadedDoc:
 
 
 def is_supported(path: Path) -> bool:
+    if path.name in BROWSER_FILES:
+        return True
     return path.suffix.lower() in SUPPORTED_EXT and not path.name.startswith(".")
 
 
+def is_code_project(dirpath: str, names: list[str]) -> bool:
+    """A git checkout with a build manifest, unless it is also an Obsidian vault."""
+    entries = set(names)
+    return ".git" in entries and bool(entries & PROJECT_MARKERS) and ".obsidian" not in entries
+
+
+def prune_dirs(dirpath: str, dirnames: list[str], filenames: list[str], is_root: bool = False) -> None:
+    """In-place pruning for os.walk: hidden folders, tool folders and code projects are not descended."""
+    dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and d not in IGNORED_DIRS
+                         and not is_code_project(os.path.join(dirpath, d), _listdir(os.path.join(dirpath, d))))
+
+
+def _listdir(path: str) -> list[str]:
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
+
+
 def iter_files(root: Path):
-    """Yield supported files under root (or root itself), skipping hidden and tool dirs."""
+    """Yield supported files under root (or root itself), skipping hidden, tool and code-project folders."""
     root = root.expanduser().resolve()
     if root.is_file():
         if is_supported(root):
             yield root
         return
-    for p in sorted(root.rglob("*")):
-        rel = p.relative_to(root).parts
-        if any(part in IGNORED_DIRS or part.startswith(".") for part in rel[:-1]):
-            continue
-        if p.is_file() and is_supported(p):
-            yield p
+    for dirpath, dirnames, filenames in os.walk(root):
+        prune_dirs(dirpath, dirnames, filenames)
+        for name in sorted(filenames):
+            p = Path(dirpath) / name
+            if name not in BROWSER_FILES and is_supported(p):  # browser stores only when added directly
+                yield p
 
 
 def load_file(path: Path) -> list[LoadedDoc]:
+    if path.name == "Bookmarks":  # Chrome, Edge, Brave, Vivaldi, Arc...
+        try:
+            data = json.loads(read_text(path))
+        except ValueError:
+            return []
+        return load_chrome_bookmarks(path, data) if isinstance(data.get("roots"), dict) else []
+    if path.name == "places.sqlite":
+        return load_firefox_bookmarks(path)
+    if path.name == "Bookmarks.plist":
+        return load_safari_bookmarks(path)
     ext = path.suffix.lower()
     if ext in TEXT_EXT:
         return [load_markdown(path)]
@@ -364,6 +402,73 @@ def load_chrome_bookmarks(path: Path, data: dict) -> list[LoadedDoc]:
     for key, root in data["roots"].items():
         if isinstance(root, dict):
             walk({"type": "root", "children": root.get("children", [])}, [])
+    return list(docs.values())
+
+
+def load_firefox_bookmarks(path: Path) -> list[LoadedDoc]:
+    """Firefox keeps bookmarks in places.sqlite, locked while it runs: read a copy."""
+    import shutil
+    import sqlite3
+    import tempfile
+
+    docs: dict[str, LoadedDoc] = {}
+    with tempfile.TemporaryDirectory() as tmp:
+        copy = Path(tmp) / "places.sqlite"
+        shutil.copy2(path, copy)
+        for extra in ("-wal", "-shm"):
+            side = path.with_name(path.name + extra)
+            if side.exists():
+                shutil.copy2(side, copy.with_name(copy.name + extra))
+        con = sqlite3.connect(copy)
+        try:
+            rows = con.execute("SELECT id, type, parent, title, fk FROM moz_bookmarks").fetchall()
+            urls = dict(con.execute("SELECT id, url FROM moz_places"))
+        finally:
+            con.close()
+    nodes = {r[0]: r for r in rows}
+    skip = {"", "menu", "toolbar", "unfiled", "mobile", "root", "tags", "bookmarks menu", "bookmarks toolbar",
+            "other bookmarks", "mobile bookmarks"}
+
+    def folders(parent: int) -> list[str]:
+        out = []
+        while parent in nodes:
+            title = (nodes[parent][3] or "").strip()
+            if title.lower() not in skip:
+                out.append(title)
+            parent = nodes[parent][2]
+            if len(out) > 20:
+                break
+        return out[::-1]
+
+    for _id, typ, parent, title, fk in rows:
+        url = urls.get(fk) if typ == 1 else None
+        if url and url.startswith(("http://", "https://")):
+            docs[url] = bookmark_doc(path, url, (title or "").strip(), folders(parent))
+    return list(docs.values())
+
+
+def load_safari_bookmarks(path: Path) -> list[LoadedDoc]:
+    import plistlib
+
+    with open(path, "rb") as f:  # macOS needs Full Disk Access for this file
+        data = plistlib.load(f)
+    docs: dict[str, LoadedDoc] = {}
+
+    def walk(node: dict, trail: list[str]):
+        kind = node.get("WebBookmarkType")
+        if kind == "WebBookmarkTypeLeaf":
+            url = node.get("URLString", "")
+            if url.startswith(("http://", "https://")):
+                title = node.get("URIDictionary", {}).get("title", "")
+                docs[url] = bookmark_doc(path, url, title, trail)
+        title = node.get("Title", "")
+        if title == "com.apple.ReadingList":
+            title = "Reading List"
+        name = [title] if kind == "WebBookmarkTypeList" and title and title not in ("BookmarksBar", "BookmarksMenu") else []
+        for child in node.get("Children", []) or []:
+            walk(child, trail + name)
+
+    walk(data, [])
     return list(docs.values())
 
 

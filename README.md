@@ -3,6 +3,10 @@
 **Search everything you know.** A local-first app that indexes your notes, PDFs, bookmarks and
 documents into a searchable knowledge graph. Nothing leaves your machine.
 
+Open it and it finds your notes for you: Obsidian and Logseq vaults, note folders, Documents, Desktop,
+cloud drives and your browsers' bookmarks. One click indexes everything, and Home shows every note
+sorted into topics it works out on its own.
+
 - **Ask questions across your files, with citations.** Answers link to the exact passage (and PDF page) they came from.
 - **Discover connections automatically.** It finds pairs of notes that talk about the same thing but that you never linked, and explains each pair with the bridging terms and the two passages that match best.
 - **See how your ideas connect.** An interactive graph of your explicit links and semantic similarity, clustered and labelled by topic.
@@ -15,27 +19,42 @@ documents into a searchable knowledge graph. Nothing leaves your machine.
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[embeddings]"      # drop [embeddings] for the zero-download mode
 
-brain add ~/Notes ~/Papers ~/Downloads/bookmarks.html
-brain serve --watch --open          # http://localhost:7777
+brain                               # opens http://localhost:7777
 ```
 
-To try it on the bundled demo vault: `brain add sample_vault && brain serve --open`.
+That's it. On first launch the app looks for your notes, shows what it found (pre-selected), and indexes
+it when you click **Index**. From then on it stays in sync by itself: folders are watched for changes, and
+browser bookmarks are re-read every 15 minutes.
+
+Prefer the terminal? `brain discover --add` does the same discovery, and `brain add PATH` adds anything it missed.
+To try the bundled demo instead: `brain add sample_vault && brain`.
 
 For generated answers (instead of quoted sentences), either run a local model: install [Ollama](https://ollama.com)
 and `ollama pull llama3.2`, or any OpenAI-compatible server (LM Studio, llama.cpp, vLLM) on `localhost:1234`,
 both detected automatically. Or add a cloud API key (see below).
 
-## What does it read? (No, it doesn't crawl your disk)
+## How it finds your notes
 
-Second Brain only reads what you explicitly give it:
+**Discovery** (first launch, *Find more notes* on Home, or `brain discover`) looks at folder structure and file
+names in your home folder, not file contents. It's time-limited to about 12 seconds:
 
-1. **Folders or files you add** with `brain add PATH` or the Library page. They are remembered as *sources*.
-2. **Files you upload** in the web UI. They are copied to `~/.secondbrain/inbox/`.
+| Finds | How |
+|---|---|
+| Obsidian vaults, Logseq graphs | folders containing `.obsidian/`, or `logseq/` + `pages/`, anywhere under your home folder, plus Obsidian's iCloud folder |
+| Note folders | top-level folders (Documents, Desktop, Notes, Dropbox, OneDrive, Google Drive, iCloud Drive, ...) that contain notes or documents |
+| Browser bookmarks | read in place from Chrome, Edge, Brave, Vivaldi, Arc, Chromium, Opera, Firefox and Safari profiles, no export needed |
 
-Inside a source folder it walks subfolders, but only opens files with supported extensions
-(`.md .markdown .txt .org .rst .pdf .docx .html .htm`, plus bookmark exports). It skips hidden files and
-folders, `.git`, `node_modules`, virtualenvs, `.obsidian`, `.trash`, build output, and anything over 50 MB.
-Re-indexing re-reads only files whose size or modification time changed. `--watch` watches only your
+It skips system and media folders (`Library`, `AppData`, Pictures, Music, Movies...), hidden folders, and code
+projects. Downloads and very large folders are listed but not pre-selected. Nothing is indexed until you confirm,
+and you can untick anything. (Safari's bookmarks need Full Disk Access on macOS. Apple Notes, Bear and Notion
+keep notes in their own databases or the cloud, so export them to Markdown into a folder first.)
+
+**Indexing** then reads only the confirmed sources, plus folders you add yourself (Library page or `brain add`)
+and files you upload. Inside a source it walks subfolders, but only opens supported files
+(`.md .markdown .txt .org .rst .pdf .docx .html .htm`, plus bookmark files). It skips hidden folders, `.git`,
+`node_modules`, virtualenvs, build output, **code projects** (a git checkout with a `package.json`,
+`pyproject.toml`, `Cargo.toml`...), and anything over 50 MB.
+Re-indexing re-reads only files whose size or modification time changed, and the watcher watches only your
 source folders. Your files are never modified; their text is copied into `~/.secondbrain/brain.db`, and
 `brain remove PATH` deletes those copies, not the files.
 
@@ -80,7 +99,13 @@ brain keys remove anthropic
 | Browser bookmarks | Netscape `bookmarks.html` export (every browser), or Chrome/Edge `Bookmarks` JSON. Folders become tags. Set `fetch_bookmarks = true` to also download and index each page; this is the only feature that touches the network, and it's off by default. |
 
 Indexing is incremental. Unchanged files are skipped by mtime/size, then by content hash.
-`--watch` re-indexes files a couple of seconds after they change.
+The server re-indexes changed files a couple of seconds after they change (`--no-watch` turns this off).
+
+## Home: everything, organised
+
+Home lists every document exactly once: grouped into **topics**, which are clusters of notes that link to or resemble
+each other, each named after its most distinctive words. Above them sit your **recently edited** notes, and below them
+whatever doesn't belong to a topic yet. Topics update automatically as you write.
 
 ## How it works
 
@@ -116,7 +141,9 @@ brain ask "question"       cited answer (--no-llm for extractive)
 brain connections          list discovered connections
 brain stats                what's indexed, which models are in use
 brain keys list|set|remove|use [PROVIDER]   manage API keys and the answer engine
-brain serve [--watch] [--open] [--port 7777]
+brain                      start the app and open it in your browser
+brain discover [--add]     find vaults, note folders and browser bookmarks (and index them)
+brain serve [--no-watch] [--open] [--port 7777]
 ```
 
 Global options: `--home DIR` (data directory, default `~/.secondbrain`, or `$SECONDBRAIN_HOME`) and `--embedder`.

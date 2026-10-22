@@ -109,6 +109,31 @@ def cmd_stats(args):
     print("Sources:     " + ("\n             ".join(s["roots"]) or "none (run `brain add <folder>`)"))
 
 
+def cmd_discover(args):
+    from .discover import discover, outermost
+
+    brain = _brain(args)
+    print("Looking for notes (folder and file names only)…", file=sys.stderr)
+    found = discover(added_roots=brain.store.roots())
+    if not found:
+        print("Nothing found. Add folders yourself with `brain add PATH`.")
+        return
+    for c in found:
+        what = (f"{c.bookmarks} bookmarks" if c.kind == "bookmarks"
+                else f"{c.notes} notes, {c.docs} documents" + ("+" if c.partial else ""))
+        mark = "added" if c.added else ("[x]" if c.selected else "[ ]")
+        app = f"{c.app} " if c.app and c.kind != "bookmarks" else ""
+        print(f"  {mark:<5} {app}{c.label:<28} {what:<28} {c.path}" + (f"  ({c.detail})" if c.detail else ""))
+    chosen = outermost([c.path for c in found if c.selected])
+    if args.add and chosen:
+        brain.indexer.on_progress = _progress
+        report = brain.add(chosen)
+        print("\r" + " " * 90 + "\r", end="", file=sys.stderr)
+        print(report.summary())
+    elif chosen:
+        print("\nRun `brain discover --add` to index the [x] items, or `brain add PATH` for specific ones.")
+
+
 def cmd_keys(args):
     import getpass
 
@@ -168,13 +193,15 @@ def cmd_serve(args):
     from .server import create_app
 
     brain = _brain(args)
-    if args.watch:
+    if not getattr(args, "no_watch", False):
         from .watcher import FolderWatcher
 
         FolderWatcher(brain).start()
     host, port = args.host or brain.settings.host, args.port or brain.settings.port
     url = f"http://{'localhost' if host in ('127.0.0.1', '0.0.0.0') else host}:{port}"
     print(f"Second Brain OS running at {url}  (embeddings: {brain.embedder.describe()})")
+    if not brain.store.roots():
+        print("First run: the app will offer to find your notes automatically.")
     if args.open:
         webbrowser.open(url)
     uvicorn.run(create_app(brain), host=host, port=port, log_level="warning")
@@ -184,7 +211,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog="brain", description="Second Brain OS: search everything you know, locally.")
     p.add_argument("--home", help="data directory (default ~/.secondbrain or $SECONDBRAIN_HOME)")
     p.add_argument("--embedder", choices=["auto", "fastembed", "ollama", "hashing"], help="embedding backend")
-    sub = p.add_subparsers(dest="cmd", required=True)
+    sub = p.add_subparsers(dest="cmd")
 
     s = sub.add_parser("add", help="index files or folders (and keep them as sources)")
     s.add_argument("paths", nargs="+")
@@ -214,6 +241,10 @@ def main(argv=None):
     s = sub.add_parser("stats", help="show what's indexed and which models are in use")
     s.set_defaults(fn=cmd_stats)
 
+    s = sub.add_parser("discover", help="find notes, vaults and browser bookmarks on this machine")
+    s.add_argument("--add", action="store_true", help="index everything that is pre-selected")
+    s.set_defaults(fn=cmd_discover)
+
     s = sub.add_parser("keys", help="manage API keys and choose the answer engine")
     s.add_argument("action", choices=["list", "set", "remove", "use"])
     s.add_argument("provider", nargs="?", help="ollama, local, anthropic, openai, gemini, github (or auto/none with `use`)")
@@ -223,11 +254,14 @@ def main(argv=None):
     s = sub.add_parser("serve", help="start the local web app")
     s.add_argument("--host")
     s.add_argument("--port", type=int)
-    s.add_argument("--watch", action="store_true", help="re-index sources automatically when files change")
+    s.add_argument("--no-watch", action="store_true", help="don't re-index automatically when files change")
+    s.add_argument("--watch", action="store_true", help=argparse.SUPPRESS)  # default now; kept for old scripts
     s.add_argument("--open", action="store_true", help="open the browser")
     s.set_defaults(fn=cmd_serve)
 
     args = p.parse_args(argv)
+    if args.cmd is None:  # plain `brain`: start the app and open it
+        args = p.parse_args([*(argv or sys.argv[1:]), "serve", "--open"])
     if args.cmd == "keys" and args.action != "list" and not args.provider:
         p.error(f"keys {args.action} needs a provider")
     logging.basicConfig(level=logging.INFO, format="%(message)s")

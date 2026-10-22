@@ -295,3 +295,31 @@ def discovered_connections(store: Store, limit: int = 50) -> list[dict]:
         c["evidence"] = [{"chunk_id": cid, "text": chunks[cid]["text"][:400], "heading": chunks[cid]["heading"],
                           "page": chunks[cid]["page"]} for cid in c["evidence"] if cid in chunks]
     return out
+
+
+def overview(store: Store) -> dict:
+    """Everything in the library, organised: topics (clusters) with their documents, recent notes, the rest."""
+    docs = store.all_docs()
+    clusters = store.get_meta("clusters", {})
+    labels = store.get_meta("cluster_labels", {})
+    degree: Counter = Counter()
+    for e in store.edges():
+        degree[e["src"]] += 1
+        degree[e["dst"]] += 1
+    slim = {d["id"]: {"id": d["id"], "title": d["title"], "kind": d["kind"], "tags": d["tags"][:4],
+                      "mtime": d["mtime"], "words": d["words"], "degree": degree[d["id"]]} for d in docs}
+    topics: dict[int, list] = {int(k): [] for k in labels}
+    unsorted = []
+    for d in docs:
+        c = clusters.get(str(d["id"]), -1)
+        (topics[c] if c in topics else unsorted).append(slim[d["id"]])
+    by_importance = lambda x: (-x["degree"], x["title"].lower())
+    recent = sorted((x for x in slim.values() if x["kind"] != "bookmark" and x["mtime"]),
+                    key=lambda x: -x["mtime"])[:8]
+    return {
+        "topics": [{"id": c, "label": labels[str(c)]["label"], "docs": sorted(items, key=by_importance)}
+                   for c, items in sorted(topics.items()) if items],
+        "unsorted": sorted(unsorted, key=lambda x: x["title"].lower()),
+        "recent": recent,
+        "total": len(docs),
+    }

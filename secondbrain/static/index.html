@@ -31,6 +31,8 @@
   <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
   <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 20h16"/></symbol>
   <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M4 11 12 4l8 7v8a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
   <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></symbol>
   <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M17.5 19H7a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 11 4 4 0 0 1 17.5 19Z"/></symbol>
   <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9.2-9.2M17 6l3 3M14 9l2 2"/></symbol>
@@ -41,6 +43,7 @@
   <aside class="sidebar">
     <div class="brand"><span class="brand-mark"><svg class="i"><use href="#i-graph"/></svg></span>Second Brain</div>
     <nav class="nav" id="nav">
+      <button data-view="home"><svg class="i"><use href="#i-home"/></svg>Home</button>
       <button data-view="ask"><svg class="i"><use href="#i-ask"/></svg>Ask</button>
       <button data-view="search"><svg class="i"><use href="#i-search"/></svg>Search<span class="count"><kbd>/</kbd></span></button>
       <button data-view="graph"><svg class="i"><use href="#i-graph"/></svg>Graph</button>
@@ -58,6 +61,32 @@
   </aside>
 
   <main>
+    <!-- HOME -->
+    <section class="view" id="view-home">
+      <div class="page wide">
+        <div id="onboard" class="hidden">
+          <div class="onboard-head">
+            <div class="brand-mark big"><svg class="i"><use href="#i-graph"/></svg></div>
+            <h1 id="onboard-title">Let's find your notes</h1>
+            <p class="lede" id="onboard-lede">Second Brain is looking through folder and file names in your home folder (not their contents) for notes, documents, Obsidian vaults and browser bookmarks. Nothing is read until you confirm.</p>
+          </div>
+          <div id="onboard-body"></div>
+        </div>
+        <div id="home-main" class="hidden">
+          <div class="home-head">
+            <div><h1>Your second brain</h1><p class="lede" id="home-summary"></p></div>
+            <button class="btn" id="find-more"><svg class="i"><use href="#i-search"/></svg>Find more notes</button>
+          </div>
+          <div id="home-progress"></div>
+          <div class="searchbar"><svg class="i"><use href="#i-search"/></svg><input class="input" id="home-search" placeholder="Search everything you know…" autocomplete="off"></div>
+          <div id="home-recent"></div>
+          <div class="section-title">Topics <span class="muted" style="font-weight:400">found automatically from what your notes are about</span></div>
+          <div class="topics" id="home-topics"></div>
+          <div id="home-unsorted"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- ASK -->
     <section class="view" id="view-ask">
       <div class="thread" id="thread"><div class="thread-inner" id="thread-inner">
@@ -141,6 +170,7 @@
           <input class="input" id="add-path" placeholder="/path/to/your/notes, a PDF folder, or a bookmarks.html export" style="padding:8px 12px">
           <button class="btn primary" type="submit"><svg class="i"><use href="#i-plus"/></svg>Add</button>
           <button class="btn" type="button" id="reindex-btn" title="Re-scan all sources"><svg class="i"><use href="#i-refresh"/></svg>Re-index</button>
+          <button class="btn" type="button" id="auto-find-btn" title="Look for notes, vaults and browser bookmarks"><svg class="i"><use href="#i-search"/></svg>Find automatically</button>
         </form>
         <div class="dropzone" id="dropzone">
           <svg class="i"><use href="#i-upload"/></svg>
@@ -197,6 +227,7 @@
   </aside>
 
   <nav class="mobile-nav" id="mobile-nav">
+    <button data-view="home"><svg class="i"><use href="#i-home"/></svg>Home</button>
     <button data-view="ask"><svg class="i"><use href="#i-ask"/></svg>Ask</button>
     <button data-view="search"><svg class="i"><use href="#i-search"/></svg>Search</button>
     <button data-view="graph"><svg class="i"><use href="#i-graph"/></svg>Graph</button>

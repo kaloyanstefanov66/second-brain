@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .brain import Brain
+from .discover import discover, outermost
+from .graph import overview
 from .llm import PROVIDERS, ProviderError, ProviderStore, detect_llm, list_models, pick_model, provider_status
 
 STATIC = Path(__file__).parent / "static"
@@ -35,6 +37,10 @@ class ProviderBody(BaseModel):
 
 class ActiveBody(BaseModel):
     provider: str
+
+
+class BulkBody(BaseModel):
+    paths: list[str]
 
 
 def create_app(brain: Brain) -> FastAPI:
@@ -136,6 +142,24 @@ def create_app(brain: Brain) -> FastAPI:
                 yield json.dumps({"type": "error", "message": str(e)}) + "\n"
 
         return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+    @app.get("/api/overview")
+    def overview_():
+        return overview(brain.store)
+
+    @app.get("/api/discover")
+    def discover_():
+        """Look for notes on this machine. Reads folder structure and file names only."""
+        return {"candidates": [c.to_dict() for c in discover(added_roots=brain.store.roots())]}
+
+    @app.post("/api/sources/bulk")
+    def add_sources(body: BulkBody):
+        paths = [p for p in outermost(body.paths) if Path(p).exists()]
+        if not paths:
+            raise HTTPException(400, "nothing to add")
+        if not brain.run_in_background(brain.add, paths):
+            raise HTTPException(409, "an indexing job is already running")
+        return {"ok": True, "paths": paths}
 
     @app.get("/api/graph")
     def graph():
