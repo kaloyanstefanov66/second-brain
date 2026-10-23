@@ -21,11 +21,6 @@ classifiers = [
     "Topic :: Office/Business",
     "Topic :: Text Processing :: Indexing",
 ]
-
-[project.urls]
-Homepage = "https://github.com/kaloyanstefanov66/second-brain"
-Download = "https://github.com/kaloyanstefanov66/second-brain/releases/latest"
-Issues = "https://github.com/kaloyanstefanov66/second-brain/issues"
 dependencies = [
     "numpy>=1.24",
     "fastapi>=0.110",
@@ -36,6 +31,11 @@ dependencies = [
     "watchdog>=4.0",
     "anthropic>=2.1",  # Claude as an optional cloud answer engine (used only with a key)
 ]
+
+[project.urls]
+Homepage = "https://github.com/kaloyanstefanov66/second-brain"
+Download = "https://github.com/kaloyanstefanov66/second-brain/releases/latest"
+Issues = "https://github.com/kaloyanstefanov66/second-brain/issues"
 
 [project.optional-dependencies]
 # Local neural embeddings (ONNX, CPU). Downloads a ~70MB model once, then runs offline.
