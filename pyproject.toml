@@ -5,9 +5,27 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "second-brain"
 version = "0.1.2"
-description = "Local-first knowledge graph and search for your notes, PDFs, bookmarks and documents."
+description = "A local-first second brain: finds your notes, PDFs and bookmarks, organizes them by topic, and answers questions with citations, all on your machine."
 readme = "README.md"
 requires-python = ">=3.10"
+keywords = ["second-brain", "knowledge-graph", "personal-knowledge-management", "pkm", "note-taking",
+            "semantic-search", "local-first", "rag", "embeddings", "obsidian", "markdown", "bookmarks", "desktop-app"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: MacOS X",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business",
+    "Topic :: Text Processing :: Indexing",
+]
+
+[project.urls]
+Homepage = "https://github.com/kaloyanstefanov66/second-brain"
+Download = "https://github.com/kaloyanstefanov66/second-brain/releases/latest"
+Issues = "https://github.com/kaloyanstefanov66/second-brain/issues"
 dependencies = [
     "numpy>=1.24",
     "fastapi>=0.110",
